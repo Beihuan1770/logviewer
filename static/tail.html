@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>路径追踪 - 日志追踪系统</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; font-family: "Microsoft YaHei", Arial, sans-serif; background: #eaf2fb; color: #1f2d3d; }
+:root { --topbar-h: 56px; --toolbar-h: 52px; }
+.topbar {
+  height: var(--topbar-h); background: linear-gradient(135deg,#071734,#0a1f4f); color: #fff;
+  padding: 0 20px; display: flex; align-items: center; gap: 28px; justify-content: space-between;
+  box-shadow: 0 4px 16px rgba(13,39,80,.15); position: relative; z-index: 10;
+}
+.brand { font-size: 17px; font-weight: 700; letter-spacing: 2px; }
+.tabs { display: flex; gap: 4px; align-self: stretch; align-items: center; }
+.tabs a { color: #b9c8e4; text-decoration: none; font-size: 14px; font-weight: 600; padding: 7px 16px; border-radius: 9px; transition: all .15s; }
+.tabs a:hover { background: rgba(255,255,255,.08); color: #fff; }
+.tabs a.active { background: #2b8cff; color: #fff; box-shadow: 0 3px 10px rgba(43,140,255,.4); }
+.topbar-right { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.conn-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; background: #3fb950; }
+
+.toolbar { min-height: var(--toolbar-h); display: flex; align-items: center; gap: 10px; padding: 8px 14px; background: #fff; border-bottom: 1px solid #e3ebf7; flex-wrap: wrap; }
+.toolbar label { font-size: 12px; color: #64748b; letter-spacing: 2px; font-weight: 700; }
+.toolbar select { height: 34px; min-width: 200px; padding: 4px 10px; border: 1px solid #d8e2f0; border-radius: 9px; font-size: 13px; background: #fff; outline: none; }
+.toolbar input[type=text] { height: 34px; padding: 5px 10px; border: 1px solid #d8e2f0; border-radius: 9px; font-size: 13px; outline: none; font-family: Consolas, Monaco, monospace; }
+.toolbar input:focus, .toolbar select:focus { border-color: #2b8cff; }
+#pathInput { flex: 1; min-width: 320px; }
+#filterInput { width: 220px; }
+.btn { border: none; outline: none; border-radius: 9px; font-size: 12px; cursor: pointer; font-weight: 600; padding: 6px 12px; white-space: nowrap; transition: background .15s; }
+.btn-primary { background: #2b8cff; color: #fff; }
+.btn-primary:hover { background: #1a7aef; }
+.btn-light { background: #fff; color: #334155; border: 1px solid #d8e2f0; }
+.btn-light:hover { background: #f1f5f9; }
+.btn-download { background: #0f766e; color: #fff; }
+.btn-download:hover { background: #0d6b63; }
+.btn-sm { padding: 4px 9px; font-size: 12px; border-radius: 7px; }
+
+.recent { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 14px 8px; background: #fff; border-bottom: 1px solid #e3ebf7; }
+.chip { font-size: 12px; color: #1d4ed8; background: #e8f1ff; border-radius: 999px; padding: 3px 10px; cursor: pointer; font-family: Consolas, Monaco, monospace; max-width: 460px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip:hover { background: #d0e0ff; }
+
+.pane-wrap { height: calc(100vh - var(--topbar-h) - var(--toolbar-h) - 40px); padding: 8px; }
+.pane { height: 100%; display: flex; flex-direction: column; background: #fff; border-radius: 14px; box-shadow: 0 6px 20px rgba(15,23,42,.06); overflow: hidden; }
+.pane header { padding: 8px 10px; border-bottom: 1px solid #eef2f7; flex-shrink: 0; }
+.pane-title { font-size: 14px; font-weight: 700; color: #0f172a; display: flex; align-items: center; gap: 8px; }
+.pane-title .addr { font-size: 12px; font-weight: 500; color: #64748b; }
+.pane-path { font-size: 11px; color: #8794a8; margin-top: 2px; word-break: break-all; font-family: Consolas, Monaco, monospace; }
+.pane-actions { display: flex; align-items: center; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.pane-actions .spacer { flex: 1; }
+.pstat { font-size: 12px; color: #64748b; }
+.pstat.tailing { color: #0b7a3e; font-weight: 600; }
+.pstat.offline { color: #dc2626; font-weight: 600; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: #94a3b8; display: inline-block; }
+.dot.tailing { background: #22c55e; box-shadow: 0 0 0 3px rgba(34,197,94,.18); }
+.dot.offline { background: #ef4444; }
+
+.logbox { flex: 1; min-height: 0; overflow-y: auto; background: #0a0e13; color: #e6edf3; padding: 4px 0; font-family: Consolas, Monaco, "JetBrains Mono", monospace; font-size: 13px; line-height: 1.55; }
+.logbox::-webkit-scrollbar { width: 7px; }
+.logbox::-webkit-scrollbar-thumb { background: #30363d; border-radius: 4px; }
+.log-line { padding: 1px 12px; white-space: pre-wrap; word-break: break-all; border-bottom: 1px solid rgba(255,255,255,.015); }
+.log-line:nth-child(odd) { background: rgba(255,255,255,.008); }
+.log-line .hl { background: rgba(210,153,29,.5); padding: 0 1px; border-radius: 2px; color: #fff; }
+.log-line.level-error { color: #f85149; background: rgba(248,81,73,.06); }
+.log-line.level-warn { color: #d2991d; }
+.pane footer { height: 26px; display: flex; align-items: center; gap: 10px; padding: 0 10px; border-top: 1px solid #eef2f7; font-size: 11px; color: #7b8aa3; background: #fbfdff; flex-shrink: 0; }
+.pane footer .grow { flex: 1; }
+.empty { padding: 40px; text-align: center; color: #94a3b8; font-size: 14px; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">日志追踪系统</div>
+  <nav class="tabs">
+    <a href="/index.html">主机日志</a>
+    <a href="/app.html">应用日志</a>
+    <a href="/tail.html" class="active">路径追踪</a>
+  </nav>
+  <div class="topbar-right"><span class="conn-dot" id="statusDot"></span><span id="statusText">就绪</span></div>
+</div>
+
+<div class="toolbar">
+  <label>HOST</label>
+  <select id="hostSel"></select>
+  <input id="pathInput" type="text" placeholder="输入远端绝对路径，例如 /var/log/messages 或 /data/projects/drone_logs/xxx.log" />
+  <button class="btn btn-primary btn-sm" id="btnOpen">开始追踪</button>
+  <input id="filterInput" type="text" placeholder="过滤当前内容..." />
+  <button class="btn btn-light btn-sm" id="btnAuto"><span id="autoText">自动滚动: 开</span></button>
+</div>
+<div class="recent" id="recentBox"></div>
+
+<div class="pane-wrap">
+  <section class="pane">
+    <header>
+      <div class="pane-title"><span class="dot" id="paneDot"></span><span id="paneHost">未选择主机</span>
+        <span class="addr" id="paneAddr"></span></div>
+      <div class="pane-path" id="panePath">输入绝对路径后开始追踪</div>
+      <div class="pane-actions">
+        <span class="pstat" id="paneStatus">待命</span>
+        <span class="pstat" id="fileMeta"></span>
+        <span class="spacer"></span>
+        <button class="btn btn-light btn-sm" id="btnStop" disabled>暂停</button>
+        <button class="btn btn-primary btn-sm" id="btnResume" style="display:none">继续</button>
+        <button class="btn btn-light btn-sm" id="btnFullscreen" disabled>全屏</button>
+        <button class="btn btn-download btn-sm" id="btnDownload" disabled>下载</button>
+      </div>
+    </header>
+    <div class="logbox" id="logBox"><div class="empty">输入一个绝对路径，开始实时追踪</div></div>
+    <footer><span id="lineCount">0 行</span><span class="grow"></span><span id="hint">—</span></footer>
+  </section>
+</div>
+
+<script>
+const MAX_LINES = 20000;
+const STORE_KEY = 'logviewer.recentPaths';
+
+const hostSel = document.getElementById('hostSel');
+const pathInput = document.getElementById('pathInput');
+const btnOpen = document.getElementById('btnOpen');
+const recentBox = document.getElementById('recentBox');
+const filterInput = document.getElementById('filterInput');
+const btnAuto = document.getElementById('btnAuto');
+const autoText = document.getElementById('autoText');
+const logBox = document.getElementById('logBox');
+const paneHost = document.getElementById('paneHost');
+const paneAddr = document.getElementById('paneAddr');
+const panePath = document.getElementById('panePath');
+const paneStatus = document.getElementById('paneStatus');
+const paneDot = document.getElementById('paneDot');
+const fileMeta = document.getElementById('fileMeta');
+const lineCount = document.getElementById('lineCount');
+const hint = document.getElementById('hint');
+const btnStop = document.getElementById('btnStop');
+const btnResume = document.getElementById('btnResume');
+const btnFullscreen = document.getElementById('btnFullscreen');
+const btnDownload = document.getElementById('btnDownload');
+const statusDot = document.getElementById('statusDot');
+const statusText = document.getElementById('statusText');
+
+let hosts = [];
+let current = { host: '', path: '' };
+let lines = [];
+let pending = [];
+let flushTimer = null;
+let ws = null;
+let retry = 1000;
+let stopped = true;
+let autoScroll = true;
+let filterText = '';
+let progScroll = false;
+let progTimer = null;
+let totalLoaded = null;
+let hasMore = false;
+let loadingPrev = false;
+
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function lineClass(line) {
+  if (/\b(error|fatal|exception|panic)\b/i.test(line)) return 'level-error';
+  if (/\b(warn|warning)\b/i.test(line)) return 'level-warn';
+  return '';
+}
+function match(line) { return !filterText || line.toLowerCase().indexOf(filterText) !== -1; }
+function makeNode(line) {
+  const div = document.createElement('div');
+  div.className = 'log-line ' + lineClass(line);
+  if (filterText) {
+    const re = filterText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    div.innerHTML = esc(line).replace(new RegExp('(' + re + ')', 'gi'), '<span class="hl">$1</span>');
+  } else {
+    div.textContent = line;
+  }
+  return div;
+}
+function scrollBottom() {
+  progScroll = true;
+  logBox.scrollTop = logBox.scrollHeight;
+  clearTimeout(progTimer);
+  progTimer = setTimeout(() => { progScroll = false; }, 150);
+}
+function setAuto(on) {
+  autoScroll = on;
+  autoText.textContent = '自动滚动: ' + (on ? '开' : '关');
+  if (on) scrollBottom();
+}
+btnAuto.onclick = () => setAuto(!autoScroll);
+
+function setStatus(text, cls) {
+  paneStatus.textContent = text;
+  paneStatus.className = 'pstat ' + (cls || '');
+  paneDot.className = 'dot ' + (cls || '');
+}
+
+function updateCount() { lineCount.textContent = lines.length.toLocaleString() + ' 行'; }
+
+function scheduleFlush() {
+  if (flushTimer) return;
+  flushTimer = setTimeout(flush, 150);
+}
+function flush() {
+  flushTimer = null;
+  if (!pending.length) return;
+  const frag = document.createDocumentFragment();
+  for (const l of pending) if (match(l)) frag.appendChild(makeNode(l));
+  pending = [];
+  const placeholder = logBox.querySelector('.empty');
+  if (placeholder) placeholder.remove();
+  if (frag.childNodes.length) logBox.appendChild(frag);
+  while (logBox.childElementCount > 6000) logBox.removeChild(logBox.firstElementChild);
+  if (autoScroll) scrollBottom();
+}
+
+function renderAll() {
+  logBox.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  for (const l of lines) if (match(l)) frag.appendChild(makeNode(l));
+  if (!frag.childNodes.length) {
+    logBox.innerHTML = '<div class="empty">暂无内容</div>';
+  } else {
+    logBox.appendChild(frag);
+  }
+  if (autoScroll) scrollBottom();
+}
+
+function connect() {
+  clearTimeout(retry.timer);
+  if (ws) { try { ws.close(); } catch (e) {} }
+  if (!current.host || !current.path) return;
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(proto + '//' + location.host + '/ws');
+  stopped = false;
+  ws.onopen = () => {
+    retry = 1000;
+    ws.send(JSON.stringify({ type: 'init', host: current.host, file: current.path }));
+  };
+  ws.onmessage = (ev) => {
+    let msg; try { msg = JSON.parse(ev.data); } catch (e) { return; }
+    handle(msg);
+  };
+  ws.onclose = () => {
+    if (stopped) return;
+    setStatus('已断开，重连中…', 'offline');
+    retry.timer = setTimeout(connect, retry);
+    retry = Math.min(retry * 2, 30000);
+  };
+  ws.onerror = () => { try { ws.close(); } catch (e) {} };
+}
+
+function send(obj) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj)); }
+
+function handle(msg) {
+  switch (msg.type) {
+    case 'init_response':
+      lines = []; pending = [];
+      clearTimeout(flushTimer); flushTimer = null;
+      totalLoaded = msg.data.total_lines;
+      hasMore = !!msg.data.has_more;
+      loadingPrev = false;
+      (msg.data.lines || []).forEach(l => lines.push(l));
+      renderAll();
+      updateCount();
+      scrollBottom();
+      break;
+    case 'new_line':
+      lines.push(msg.data);
+      if (lines.length > MAX_LINES) lines.shift();
+      pending.push(msg.data);
+      scheduleFlush();
+      updateCount();
+      break;
+    case 'prev_lines': {
+      loadingPrev = false;
+      const d = msg.data || {};
+      if (d.total_lines != null) totalLoaded = d.total_lines;
+      hasMore = !!d.has_more;
+      const nl = d.lines || [];
+      if (!nl.length) break;
+      const beforeH = logBox.scrollHeight;
+      const beforeTop = logBox.scrollTop;
+      const frag = document.createDocumentFragment();
+      for (const l of nl) if (match(l)) frag.appendChild(makeNode(l));
+      lines = nl.concat(lines);
+      if (lines.length > MAX_LINES) lines.length = MAX_LINES;
+      if (frag.childNodes.length) logBox.insertBefore(frag, logBox.firstChild);
+      progScroll = true;
+      logBox.scrollTop = beforeTop + (logBox.scrollHeight - beforeH);
+      clearTimeout(progTimer);
+      progTimer = setTimeout(() => { progScroll = false; }, 150);
+      updateCount();
+      break;
+    }
+    case 'status':
+      if (msg.status === 'tailing') { setStatus('实时追踪中', 'tailing'); hint.textContent = '实时追踪'; }
+      else if (msg.status === 'stopped') { setStatus('已暂停', ''); hint.textContent = '已暂停'; }
+      break;
+    case 'error':
+      setStatus(msg.message || '出错了', 'offline');
+      hint.textContent = msg.message || '';
+      if (!lines.length) logBox.innerHTML = '<div class="empty">' + esc(msg.message || '无法读取') + '</div>';
+      break;
+  }
+}
+
+function loadPrev() {
+  if (loadingPrev || !hasMore || totalLoaded == null) return;
+  loadingPrev = true;
+  send({ type: 'load_prev', host: current.host, file: current.path, params: { skip_lines: totalLoaded, limit: 200 } });
+}
+
+logBox.addEventListener('scroll', () => {
+  if (progScroll) return;
+  if (logBox.scrollHeight - logBox.scrollTop - logBox.clientHeight > 30 && autoScroll) setAuto(false);
+  if (logBox.scrollTop < 40) loadPrev();
+});
+logBox.addEventListener('wheel', (e) => { if (e.deltaY < 0 && autoScroll) setAuto(false); }, { passive: true });
+
+function fmtSize(n) {
+  if (n < 1024) return n + ' B';
+  if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
+  if (n < 1073741824) return (n / 1048576).toFixed(1) + ' MB';
+  return (n / 1073741824).toFixed(2) + ' GB';
+}
+
+async function openPath() {
+  const host = hostSel.value;
+  let p = (pathInput.value || '').trim();
+  if (!host) return;
+  if (!p) { pathInput.focus(); return; }
+  if (!p.startsWith('/')) p = '/' + p;
+
+  current = { host: host, path: p };
+  stopped = true;
+  if (ws) { try { ws.close(); } catch (e) {} }
+
+  const h = hosts.find(x => x.id === host);
+  paneHost.textContent = h ? h.name : host;
+  paneAddr.textContent = h ? h.host : '';
+  panePath.textContent = p;
+  document.title = p.split('/').pop() + ' - 路径追踪';
+  setStatus('连接中…', '');
+  fileMeta.textContent = '';
+  logBox.innerHTML = '<div class="empty">读取中…</div>';
+  lines = []; updateCount();
+  history.replaceState(null, '', '?host=' + encodeURIComponent(host) + '&path=' + encodeURIComponent(p));
+  remember(host, p);
+  renderRecent();
+
+  btnStop.disabled = false; btnFullscreen.disabled = false; btnDownload.disabled = false;
+  btnResume.style.display = 'none';
+  connect();
+
+  try {
+    const r = await fetch('/api/stat?host=' + encodeURIComponent(host) + '&path=' + encodeURIComponent(p));
+    if (r.ok) {
+      const st = await r.json();
+      if (st.exists) {
+        fileMeta.textContent = st.kind + ' · ' + fmtSize(st.size) + ' · ' + new Date(st.mtime * 1000).toLocaleString('zh-CN');
+      } else {
+        fileMeta.textContent = '文件不存在，等待创建…';
+      }
+    }
+  } catch (e) { /* ignore */ }
+}
+
+function remember(host, p) {
+  let list = [];
+  try { list = JSON.parse(localStorage.getItem(STORE_KEY) || '[]'); } catch (e) { list = []; }
+  list = list.filter(x => !(x.host === host && x.path === p));
+  list.unshift({ host, path: p });
+  list = list.slice(0, 8);
+  localStorage.setItem(STORE_KEY, JSON.stringify(list));
+}
+
+function renderRecent() {
+  let list = [];
+  try { list = JSON.parse(localStorage.getItem(STORE_KEY) || '[]'); } catch (e) { list = []; }
+  recentBox.innerHTML = list.map((x, i) =>
+    '<span class="chip" data-i="' + i + '">' + esc(x.host) + ' · ' + esc(x.path) + '</span>'
+  ).join('') || '<span style="font-size:12px;color:#94a3b8;">最近访问会记在这里</span>';
+  [...recentBox.querySelectorAll('.chip')].forEach(el => {
+    el.onclick = () => {
+      const item = list[Number(el.dataset.i)];
+      hostSel.value = item.host;
+      pathInput.value = item.path;
+      openPath();
+    };
+  });
+}
+
+btnOpen.onclick = () => openPath();
+pathInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') openPath(); });
+
+btnStop.onclick = () => {
+  stopped = true;
+  send({ type: 'stop' });
+  setStatus('已暂停', '');
+  btnStop.style.display = 'none';
+  btnResume.style.display = '';
+};
+btnResume.onclick = () => {
+  btnStop.style.display = '';
+  btnResume.style.display = 'none';
+  connect();
+};
+btnFullscreen.onclick = () => {
+  if (!current.host || !current.path) return;
+  window.open('/fullscreen.html?host=' + encodeURIComponent(current.host) + '&file=' + encodeURIComponent(current.path), '_blank');
+};
+btnDownload.onclick = () => {
+  if (!current.host || !current.path) return;
+  window.open('/api/download?host=' + encodeURIComponent(current.host) + '&file=' + encodeURIComponent(current.path), '_blank');
+};
+
+let filterTimer = null;
+filterInput.oninput = () => {
+  clearTimeout(filterTimer);
+  filterTimer = setTimeout(() => {
+    filterText = filterInput.value.trim().toLowerCase();
+    renderAll();
+    updateCount();
+  }, 200);
+};
+
+async function boot() {
+  try {
+    const resp = await fetch('/api/hosts');
+    hosts = await resp.json();
+  } catch (e) {
+    statusText.textContent = '加载主机失败';
+    statusDot.style.background = '#f85149';
+    return;
+  }
+  hostSel.innerHTML = hosts.map(h => '<option value="' + esc(h.id) + '">' + esc(h.name) + '（' + esc(h.host) + '）</option>').join('');
+  renderRecent();
+
+  const qs = new URLSearchParams(location.search);
+  const qh = qs.get('host');
+  const qp = qs.get('path');
+  if (qh && hosts.some(h => h.id === qh)) hostSel.value = qh;
+  if (qp) { pathInput.value = qp; openPath(); }
+  statusText.textContent = '已就绪';
+}
+
+boot();
+</script>
+</body>
+</html>

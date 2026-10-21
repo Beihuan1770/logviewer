@@ -1,0 +1,36 @@
+# Copy to config.yaml and edit. config.yaml is ignored by git because it
+# contains host passwords.
+
+port: 23344
+tail_lines: 200            # lines loaded on first open (and the tail start point)
+
+# The "Path" tab may open any absolute path when true.
+# Set to false and list path_roots to restrict it.
+allow_any_path: true
+# path_roots:
+#   - /var/log
+#   - /data/logs
+
+defaults:
+  user: root
+  port: 22
+  dir: /var/log/app        # default directory for the host log browser
+
+hosts:
+  - web1: {ip: 10.0.0.11, label: Web 1, pass: 'change-me'}
+  - web2: {ip: 10.0.0.12, label: Web 2, pass: 'change-me'}
+
+# Application blocks. Format:
+#   id [display name][
+#   host-nickname:/absolute/path
+#   ]
+apps: |
+  gateway 网关[
+  web1:/var/log/app/gateway.log
+  web2:/var/log/app/gateway.log
+  ]
+
+  worker[
+  web1:/var/log/app/worker.log
+  web2:/var/log/app/worker.log
+  ]

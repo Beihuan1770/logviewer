@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>日志追踪系统</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  width: 100%; height: 100%; overflow: hidden;
+  font-family: "Microsoft YaHei", Arial, sans-serif;
+  background: #eaf2fb; color: #1f2d3d;
+}
+:root { --topbar-h: 56px; --gap: 8px; }
+
+.topbar {
+  height: var(--topbar-h);
+  background: linear-gradient(135deg, #071734, #0a1f4f);
+  color: #fff; padding: 0 20px;
+  display: flex; align-items: center; justify-content: space-between;
+  box-shadow: 0 4px 16px rgba(13,39,80,0.15); z-index: 10;
+}
+.topbar .title { font-size: 17px; font-weight: 700; letter-spacing: 2px; }
+.topbar { gap: 28px; }
+.tabs { display: flex; gap: 4px; align-self: stretch; align-items: center; }
+.tabs a {
+  color: #b9c8e4; text-decoration: none; font-size: 14px; font-weight: 600;
+  padding: 7px 16px; border-radius: 9px; transition: all .15s;
+}
+.tabs a:hover { background: rgba(255,255,255,.08); color: #fff; }
+.tabs a.active { background: #2b8cff; color: #fff; box-shadow: 0 3px 10px rgba(43,140,255,.4); }
+.conn-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+.conn-dot.online { background: #3fb950; }
+.conn-dot.offline { background: #f85149; }
+.conn-dot.tailing { background: #58a6ff; animation: pulse 1.2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+.topbar-right { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+
+.wrap {
+  height: calc(100vh - var(--topbar-h));
+  display: grid;
+  grid-template-columns: minmax(290px, 38%) minmax(0, 62%);
+  gap: var(--gap); padding: var(--gap); overflow: hidden;
+}
+
+.card {
+  background: #fff; border-radius: 14px;
+  box-shadow: 0 6px 20px rgba(15,23,42,0.06);
+  display: flex; flex-direction: column; overflow: hidden; height: 100%;
+}
+
+.left-panel,
+.right-panel {
+  min-width: 0; overflow: hidden;
+}
+
+.left-fixed-top {
+  flex-shrink: 0; padding: 8px 10px 4px 10px;
+  border-bottom: 1px solid #eef2f7;
+}
+.section-label { font-size: 11px; letter-spacing: 3px; color: #64748b; margin-bottom: 6px; font-weight: 700; }
+
+.path-host-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
+.pathbar { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; flex: 1; min-width: 0; }
+.crumb { background: #e8f1ff; color: #1d4ed8; border-radius: 999px; padding: 4px 9px; font-size: 12px; cursor: pointer; white-space: nowrap; }
+.crumb:hover { background: #d0e0ff; }
+.host-select { flex: 0 0 200px; }
+.host-select select { width: 100%; height: 34px; padding: 4px 10px; border: 1px solid #d8e2f0; border-radius: 9px; font-size: 13px; outline: none; background: #fff; }
+
+.filter-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 6px; }
+.filter-row input { width: 100%; padding: 5px 8px; border: 1px solid #d8e2f0; border-radius: 9px; font-size: 13px; outline: none; }
+.filter-row input:focus { border-color: #2b8cff; }
+
+.toolbar-row { display: flex; gap: 6px; align-items: center; margin-bottom: 4px; }
+.toolbar-row input[type="text"] { flex: 1; padding: 5px 8px; border: 1px solid #d8e2f0; border-radius: 9px; font-size: 13px; outline: none; }
+.toolbar-row input[type="text"]:focus { border-color: #2b8cff; }
+
+.btn {
+  border: none; outline: none; border-radius: 9px; font-size: 12px; cursor: pointer;
+  font-weight: 600; padding: 6px 12px; white-space: nowrap; transition: background 0.15s;
+}
+.btn-primary { background: #2b8cff; color: #fff; }
+.btn-primary:hover { background: #1a7aef; }
+.btn-light { background: #fff; color: #334155; border: 1px solid #d8e2f0; }
+.btn-light:hover { background: #f1f5f9; }
+.btn-download { background: #0f766e; color: #fff; }
+.btn-download:hover { background: #0d6b63; }
+.btn-download:disabled { background: #cbd5e1; color: #64748b; cursor: not-allowed; }
+.btn-danger { background: #fff; color: #dc2626; border: 1px solid #fca5a5; }
+.btn-danger:hover { background: #fef2f2; }
+.btn-resume { background: #16a34a; color: #fff; }
+.btn-resume:hover { background: #15803d; }
+.btn-sm { padding: 4px 9px; font-size: 12px; border-radius: 7px; }
+
+.status-line { font-size: 12px; color: #64748b; padding: 2px 0; }
+
+.table-wrap {
+  flex: 1; min-height: 0; overflow-y: auto; padding: 0 10px 6px 10px;
+}
+table { width: 100%; border-collapse: collapse; border: 1px solid #eef2f7; border-radius: 10px; overflow: hidden; }
+thead { background: #f8fafc; position: sticky; top: 0; z-index: 1; }
+th, td { text-align: left; padding: 5px 7px; border-bottom: 1px solid #eef2f7; font-size: 12px; line-height: 1.3; }
+th { font-weight: 700; color: #0f172a; }
+tr:hover td { background: #fbfdff; }
+tr.active td { background: #eff6ff; }
+tr.directory td { background: #fafcff; }
+tr.directory:hover td { background: #eff6ff; }
+.file-link { color: #2563eb; cursor: pointer; font-weight: 600; word-break: break-all; }
+.file-link:hover { text-decoration: underline; }
+.file-link.active { color: #059669; }
+.dir-link { color: #1d4ed8; cursor: pointer; font-weight: 700; word-break: break-all; }
+.dir-link:hover { text-decoration: underline; }
+
+.tag { display: inline-block; padding: 2px 7px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+.tag-dir { background: #dbeafe; color: #1d4ed8; }
+.tag-file { background: #f1f5f9; color: #475569; }
+
+.checkbox-cell { text-align: center; width: 28px; }
+.checkbox-cell input[type="checkbox"] { width: 15px; height: 15px; cursor: pointer; accent-color: #2563eb; }
+
+.right-panel .card { padding: 8px 10px; position: relative; }
+.preview-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; gap: 8px; flex-shrink: 0; }
+.preview-title { font-size: 14px; font-weight: 700; color: #0f172a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.search-row { display: flex; gap: 6px; align-items: center; flex-shrink: 0; margin-bottom: 4px; }
+.search-row input { padding: 5px 8px; border: 1px solid #d8e2f0; border-radius: 9px; font-size: 13px; outline: none; width: 180px; }
+.search-row input:focus { border-color: #2b8cff; }
+.line-count { font-size: 12px; color: #64748b; margin-left: auto; }
+
+.log-box {
+  flex: 1; min-height: 0; overflow-y: auto;
+  border-radius: 12px; background: #0a0e13; color: #e6edf3; padding: 4px 0;
+  font-family: Consolas, Monaco, "JetBrains Mono", monospace;
+  font-size: 13px; line-height: 1.55;
+}
+.log-box::-webkit-scrollbar { width: 7px; }
+.log-box::-webkit-scrollbar-track { background: transparent; }
+.log-box::-webkit-scrollbar-thumb { background: #30363d; border-radius: 4px; }
+
+.log-line { padding: 1px 12px; white-space: pre-wrap; word-break: break-all; border-bottom: 1px solid rgba(255,255,255,0.015); }
+.log-line:nth-child(odd) { background: rgba(255,255,255,0.008); }
+.log-line .hl { background: rgba(210,153,29,0.5); padding: 0 1px; border-radius: 2px; color: #fff; }
+.log-line.level-error { color: #f85149; background: rgba(248,81,73,0.06); }
+.log-line.level-warn { color: #d2991d; }
+
+.empty-state {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  height: 100%; color: #94a3b8; gap: 10px; font-size: 14px;
+}
+.empty-state .icon { font-size: 36px; opacity: 0.3; }
+
+#backToBottom {
+  position: absolute; bottom: 12px; right: 18px; z-index: 5;
+  display: none;
+}
+#backToBottom.show { display: inline-block; }
+
+@media (max-width: 900px) {
+  .wrap { grid-template-columns: 1fr; overflow-y: auto; }
+  .left-panel .card, .right-panel .card { height: auto; }
+  .log-box { min-height: 380px; }
+  .filter-row { grid-template-columns: 1fr; }
+  .path-host-row { flex-direction: column; }
+  .host-select { flex: 1; width: 100%; }
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div><span class="title">日志追踪系统</span></div>
+  <nav class="tabs">
+    <a href="/index.html" class="active">主机日志</a>
+    <a href="/app.html">应用日志</a>
+    <a href="/tail.html">路径追踪</a>
+  </nav>
+  <div class="topbar-right">
+    <span class="conn-dot online" id="statusDot"></span>
+    <span id="statusText">就绪</span>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="left-panel">
+    <div class="card">
+      <div class="left-fixed-top">
+        <div class="section-label">CURRENT PATH</div>
+
+        <div class="path-host-row">
+          <div class="pathbar" id="breadcrumb"></div>
+          <div class="host-select"><select id="hostSelect"></select></div>
+          <button class="btn btn-primary btn-sm" onclick="refreshDir()">刷新</button>
+          <button class="btn btn-light btn-sm" onclick="goParent()">上级</button>
+        </div>
+
+        <div class="filter-row">
+          <input id="startTimeInput" type="datetime-local" placeholder="开始时间" onchange="renderFileTable()" />
+          <input id="endTimeInput" type="datetime-local" placeholder="结束时间" onchange="renderFileTable()" />
+        </div>
+
+        <div class="toolbar-row">
+          <input id="fileFilter" type="text" placeholder="搜索文件名..." oninput="renderFileTable()" />
+          <button class="btn btn-download btn-sm" id="downloadSelectedBtn" onclick="downloadSelectedFiles()" disabled>下载所选</button>
+        </div>
+
+        <div class="status-line" id="fileStatus">请选择主机</div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th class="checkbox-cell"><input type="checkbox" id="selectAllChk" title="全选当前可见文件" /></th>
+              <th style="width:36%">名称</th>
+              <th style="width:10%">类型</th>
+              <th style="width:10%">大小</th>
+              <th style="width:20%">修改时间</th>
+              <th style="width:24%">操作</th>
+            </tr>
+          </thead>
+          <tbody id="fileTableBody">
+            <tr><td colspan="6" class="empty-state" style="padding:20px;">选择主机查看日志文件</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="right-panel">
+    <div class="card">
+      <div class="preview-top">
+        <div class="preview-title" id="previewTitle">日志预览</div>
+        <div style="display:flex;gap:4px;flex-shrink:0;">
+          <button class="btn btn-primary btn-sm" id="btnFullscreen" disabled onclick="fullscreenLog()">全屏追踪</button>
+          <button class="btn btn-danger btn-sm" id="btnStop" disabled onclick="stopTail()">停止</button>
+          <button class="btn btn-resume btn-sm" id="btnResume" style="display:none;" onclick="resumeTail()">继续追踪</button>
+          <button class="btn btn-light btn-sm" id="btnScroll" onclick="toggleScroll()">自动: 开</button>
+          <button class="btn btn-light btn-sm" onclick="clearLog()">清屏</button>
+          <button class="btn btn-download btn-sm" id="btnDownload" disabled onclick="downloadFullFile()">下载完整文件</button>
+        </div>
+      </div>
+      <div class="search-row">
+        <input id="logSearchInput" type="text" placeholder="日志内容搜索..." oninput="reRenderLog()" />
+        <span class="line-count" id="lineCount">0 行</span>
+      </div>
+      <div class="log-box" id="logBox">
+        <div class="empty-state">
+          <div class="icon">&#128226;</div>
+          <div>选择日志文件开始实时查看</div>
+        </div>
+      </div>
+      <button class="btn btn-primary btn-sm" id="backToBottom" onclick="backToBottom()">回到最新 ↓</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let ws = null, reconnectTimer = null, reconnectDelay = 1000;
+let connected = false, selectedHost = null, selectedFile = null;
+let logLines = [], logFilterText = '';
+let currentItems = [], visibleItems = [];
+let currentPath = '';
+let hosts = [];
+let selectedFiles = new Set();
+let lastTailedFile = null;
+let currentTailId = 0;
+
+let isAutoScroll = true;
+let totalLinesLoaded = null;
+let isLoadingHistory = false;
+let hasMoreHistory = true;
+
+const MAX_LINES = 30000;
+
+const hostSelect = document.getElementById('hostSelect');
+const fileTableBody = document.getElementById('fileTableBody');
+const fileFilter = document.getElementById('fileFilter');
+const fileStatus = document.getElementById('fileStatus');
+const logBox = document.getElementById('logBox');
+const logSearchInput = document.getElementById('logSearchInput');
+const previewTitle = document.getElementById('previewTitle');
+const btnStop = document.getElementById('btnStop');
+const btnFullscreen = document.getElementById('btnFullscreen');
+const btnResume = document.getElementById('btnResume');
+const btnScroll = document.getElementById('btnScroll');
+const btnDownload = document.getElementById('btnDownload');
+const backToBottomBtn = document.getElementById('backToBottom');
+const statusDot = document.getElementById('statusDot');
+const statusText = document.getElementById('statusText');
+const lineCountEl = document.getElementById('lineCount');
+const breadcrumb = document.getElementById('breadcrumb');
+const downloadSelectedBtn = document.getElementById('downloadSelectedBtn');
+const selectAllChk = document.getElementById('selectAllChk');
+const startTimeInput = document.getElementById('startTimeInput');
+const endTimeInput = document.getElementById('endTimeInput');
+
+// ============ WebSocket ============
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(proto + '//' + location.host + '/ws');
+  ws.onopen = () => {
+    connected = true; reconnectDelay = 1000;
+    updateConnStatus('online', '已连接');
+    if (selectedHost) loadDir();
+    if (selectedFile) startLogInit();
+  };
+  ws.onmessage = (evt) => {
+    let msg; try { msg = JSON.parse(evt.data); } catch(e) { return; }
+    handleMessage(msg);
+  };
+  ws.onclose = () => { connected = false; updateConnStatus('offline', '断开，重连中...'); btnStop.disabled = true; btnFullscreen.disabled = true; btnResume.style.display = 'none'; scheduleReconnect(); };
+  ws.onerror = () => { ws.close(); };
+}
+
+function scheduleReconnect() {
+  clearTimeout(reconnectTimer);
+  reconnectTimer = setTimeout(() => { connect(); reconnectDelay = Math.min(reconnectDelay * 2, 30000); }, reconnectDelay);
+}
+
+function send(msg) {
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+}
+
+function updateConnStatus(cls, text) {
+  statusDot.className = 'conn-dot ' + cls;
+  statusText.textContent = text;
+}
+
+// ============ 消息处理 ============
+function handleMessage(msg) {
+  switch (msg.type) {
+    case 'dir_entries':
+      if (msg.host === selectedHost && msg.relPath === currentPath) {
+        currentItems = msg.data || [];
+        renderFileTable();
+      }
+      break;
+    case 'init_response':
+      totalLinesLoaded = msg.data.total_lines;
+      hasMoreHistory = msg.data.has_more;
+      logLines = [];
+      logBox.innerHTML = '';
+      const initLines = msg.data.lines || [];
+      const frag = document.createDocumentFragment();
+      for (const line of initLines) {
+        logLines.push(line);
+        frag.appendChild(createLogElement(line));
+      }
+      logBox.appendChild(frag);
+      if (isAutoScroll) logBox.scrollTop = logBox.scrollHeight;
+      updateLineCount();
+      break;
+    case 'new_line':
+      appendLine(msg.data);
+      break;
+    case 'prev_lines':
+      isLoadingHistory = false;
+      const pData = msg.data;
+      totalLinesLoaded = pData.total_lines;
+      hasMoreHistory = pData.has_more;
+      if (!pData.lines || !pData.lines.length) break;
+      prependHistory(pData.lines);
+      break;
+    case 'status':
+      if (msg.status === 'tailing') {
+        currentTailId = msg.tailId || 0;
+        updateConnStatus('tailing', '实时追踪中');
+        btnStop.disabled = false;
+        btnFullscreen.disabled = false;
+        btnResume.style.display = 'none';
+        btnDownload.disabled = false;
+        selectedFile = msg.file;
+        lastTailedFile = msg.file;
+        previewTitle.textContent = (msg.file||'').split('/').pop();
+        renderFileTable();
+      } else if (msg.status === 'stopped') {
+        if ((msg.tailId || 0) !== currentTailId) return;
+        updateConnStatus('online', '已停止');
+        btnStop.disabled = true;
+        btnFullscreen.disabled = false;
+        btnResume.style.display = 'inline-block';
+        btnDownload.disabled = false;
+      }
+      break;
+    case 'error':
+      isLoadingHistory = false;
+      updateConnStatus('online', msg.message);
+      btnStop.disabled = true;
+      btnFullscreen.disabled = false;
+      btnResume.style.display = 'inline-block';
+      break;
+  }
+}
+
+// ============ 主机列表 ============
+async function loadHosts() {
+  try {
+    const resp = await fetch('/api/hosts');
+    hosts = await resp.json();
+    hostSelect.innerHTML = hosts.map((h, i) =>
+      `<option value="${h.id}">${h.name} (${h.host})</option>`
+    ).join('');
+    hostSelect.onchange = () => {
+      stopTail();
+      selectedHost = hostSelect.value;
+      currentPath = '';
+      selectedFiles.clear();
+      updateSelectionUI();
+      loadDir();
+    };
+    if (hosts.length > 0) selectHost(hosts[0].id);
+  } catch(e) {
+    hostSelect.innerHTML = '<option>加载失败</option>';
+  }
+}
+
+function selectHost(host) {
+  selectedHost = host; selectedFile = null;
+  currentPath = '';
+  totalLinesLoaded = null; isLoadingHistory = false;
+  logBox.innerHTML = '<div class="empty-state"><div class="icon">&#128226;</div><div>选择日志文件开始实时查看</div></div>';
+  logLines = []; updateLineCount();
+  previewTitle.textContent = '日志预览';
+  btnDownload.disabled = true;
+  btnStop.disabled = true;
+  btnFullscreen.disabled = true;
+  backToBottomBtn.classList.remove('show');
+  hostSelect.value = host;
+  loadHostList();
+  loadDir();
+}
+
+function loadHostList() {
+  hostSelect.innerHTML = hosts.map((h, i) =>
+    `<option value="${h.id}" ${h.id === selectedHost ? 'selected' : ''}>${h.name} (${h.host})</option>`
+  ).join('');
+}
+
+// ============ 目录浏览 ============
+function loadDir() {
+  if (!selectedHost) return;
+  fileStatus.textContent = '加载中...';
+  fileTableBody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:20px;">加载中...</td></tr>';
+  updateBreadcrumb();
+  currentItems = []; visibleItems = [];
+  updateSelectionUI();
+  send({ action: 'list_dir', host: selectedHost, rel_path: currentPath });
+}
+
+function refreshDir() {
+  selectedFiles.clear();
+  updateSelectionUI();
+  loadDir();
+}
+
+function enterDir(name) {
+  currentPath = currentPath + name + '/';
+  selectedFiles.clear();
+  updateSelectionUI();
+  loadDir();
+}
+
+function goParent() {
+  const parts = currentPath.split('/').filter(Boolean);
+  if (!parts.length) return;
+  parts.pop();
+  currentPath = parts.length ? parts.join('/') + '/' : '';
+  selectedFiles.clear();
+  updateSelectionUI();
+  loadDir();
+}
+
+function updateBreadcrumb() {
+  breadcrumb.innerHTML = '';
+  const root = document.createElement('span');
+  root.className = 'crumb';
+  root.textContent = '根目录';
+  root.onclick = () => { currentPath = ''; selectedFiles.clear(); updateSelectionUI(); loadDir(); };
+  breadcrumb.appendChild(root);
+
+  const parts = currentPath.split('/').filter(Boolean);
+  let acc = '';
+  parts.forEach(part => {
+    acc += part + '/';
+    const c = document.createElement('span');
+    c.className = 'crumb';
+    c.textContent = part;
+    c.onclick = () => { currentPath = acc; selectedFiles.clear(); updateSelectionUI(); loadDir(); };
+    breadcrumb.appendChild(c);
+  });
+}
+
+// ============ 文件表格渲染 ============
+function formatSize(bytes) {
+  if (bytes === undefined || bytes === null || bytes === '') return '-';
+  const n = Number(bytes);
+  if (isNaN(n)) return '-';
+  if (n < 1024) return n + ' B';
+  if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
+  if (n < 1073741824) return (n / 1048576).toFixed(1) + ' MB';
+  return (n / 1073741824).toFixed(1) + ' GB';
+}
+
+function isCompressed(name) {
+  const n = (name||'').toLowerCase();
+  return n.endsWith('.gz') || n.endsWith('.zip') || n.endsWith('.tar') || n.endsWith('.tgz') || n.endsWith('.bz2') || n.endsWith('.xz') || n.endsWith('.7z') || n.endsWith('.rar');
+}
+
+function renderFileTable() {
+  const keyword = (fileFilter.value || '').toLowerCase();
+  const startDate = startTimeInput.value ? new Date(startTimeInput.value) : null;
+  const endDate = endTimeInput.value ? new Date(endTimeInput.value) : null;
+
+  let list = [...currentItems];
+
+  if (keyword) {
+    list = list.filter(item => (item.name||'').toLowerCase().includes(keyword));
+  }
+  if (startDate) {
+    list = list.filter(item => { const ts = item.mtime_ts; return ts ? ts >= Math.floor(startDate.getTime()/1000) : true; });
+  }
+  if (endDate) {
+    const endTs = new Date(endDate.getTime() + 86400000);
+    list = list.filter(item => { const ts = item.mtime_ts; return ts ? ts <= Math.floor(endTs.getTime()/1000) : true; });
+  }
+
+  list.sort((a, b) => {
+    if (a.type === 'directory' && b.type !== 'directory') return -1;
+    if (a.type !== 'directory' && b.type === 'directory') return 1;
+    if (a.type === 'symlink' && b.type !== 'symlink' && b.type !== 'directory') return -1;
+    if (a.type !== 'symlink' && b.type === 'symlink' && a.type !== 'directory') return 1;
+    return (a.name||'').localeCompare(b.name||'', 'zh-CN');
+  });
+
+  visibleItems = list;
+  const fileOnly = list.filter(item => item.type !== 'directory');
+  const allChecked = fileOnly.length > 0 && fileOnly.every(item => selectedFiles.has(item.path));
+  const someChecked = fileOnly.some(item => selectedFiles.has(item.path));
+
+  selectAllChk.checked = allChecked;
+  selectAllChk.indeterminate = someChecked && !allChecked;
+  selectAllChk.disabled = fileOnly.length === 0;
+
+  if (!list.length) {
+    let msg = keyword ? '无匹配文件' : '当前目录为空';
+    if (startDate || endDate) msg = '时间范围内无匹配文件';
+    fileTableBody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:20px;">${msg}</td></tr>`;
+    fileStatus.textContent = `共 0 项`;
+    updateSelectionUI();
+    return;
+  }
+
+  fileTableBody.innerHTML = list.map(item => {
+    const isDir = item.type === 'directory';
+    const isLink = item.type === 'symlink';
+    const isNav = isDir || isLink;
+    const name = item.name || '';
+    const path = item.path || '';
+    const relPath = item.rel_path || (currentPath + name);
+    const isActive = !isNav && selectedFile === item.path;
+    const fileOnlyPath = item.path;
+    const isChecked = !isNav && selectedFiles.has(fileOnlyPath);
+
+    let actionHtml = '';
+    if (isNav) {
+      actionHtml = `<button class="btn btn-light btn-sm" onclick="enterDir('${name.replace(/'/g, "\\'")}')">进入</button>`;
+    } else if (isCompressed(name)) {
+      actionHtml = `<button class="btn btn-download btn-sm" onclick="downloadOneFile('${fileOnlyPath.replace(/'/g, "\\'")}')">下载</button>`;
+    } else {
+      actionHtml = `<button class="btn btn-light btn-sm" onclick="selectFile('${fileOnlyPath.replace(/'/g, "\\'")}', '${name.replace(/'/g, "\\'")}')">查看</button>
+        <button class="btn btn-light btn-sm" onclick="fullscreenLogForFile('${fileOnlyPath.replace(/'/g, "\\'")}')">全屏追踪</button>`;
+    }
+
+    return `<tr class="${isActive ? 'active' : ''} ${isNav ? 'directory' : ''}">
+      <td class="checkbox-cell">
+        ${isNav ? '<input type="checkbox" disabled style="opacity:0.3;">' : `<input type="checkbox" ${isChecked ? 'checked' : ''} onchange="toggleFileSelection('${fileOnlyPath.replace(/'/g, "\\'")}', this.checked)" />`}
+      </td>
+      <td>
+        ${isDir
+          ? `<span class="dir-link" onclick="enterDir('${name.replace(/'/g, "\\'")}')">&#128193; ${name}/</span>`
+          : isLink
+          ? `<span class="dir-link" onclick="enterDir('${name.replace(/'/g, "\\'")}')">&#128279; ${name}/</span>`
+          : isCompressed(name)
+          ? `<span style="color:#64748b;" title="${name}">&#128230; ${name}</span>`
+          : `<span class="file-link ${isActive ? 'active' : ''}" onclick="selectFile('${fileOnlyPath.replace(/'/g, "\\'")}', '${name.replace(/'/g, "\\'")}')" title="${name}">&#128196; ${name}</span>`
+        }
+      </td>
+      <td><span class="tag ${isDir ? 'tag-dir' : isLink ? 'tag-dir' : 'tag-file'}">${isDir ? '目录' : isLink ? '链接' : '文件'}</span></td>
+      <td style="color:#64748b;">${isNav ? '-' : formatSize(item.size)}</td>
+      <td style="color:#64748b;font-size:12px;">${item.mtime || '-'}</td>
+      <td>${actionHtml}</td>
+    </tr>`;
+  }).join('');
+
+  let msg = `共 ${list.length} 项` + (keyword ? `（筛选自 ${currentItems.length} 项）` : '');
+  if (selectedFiles.size > 0) msg += ` | 已选 ${selectedFiles.size} 个文件`;
+  fileStatus.textContent = msg;
+  updateSelectionUI();
+}
+
+// ============ 复选框逻辑 ============
+selectAllChk.addEventListener('change', () => {
+  const fileOnly = visibleItems.filter(item => item.type !== 'directory');
+  fileOnly.forEach(item => {
+    const fp = item.path;
+    if (selectAllChk.checked) selectedFiles.add(fp);
+    else selectedFiles.delete(fp);
+  });
+  renderFileTable();
+});
+
+function toggleFileSelection(filePath, checked) {
+  const decoded = decodeURIComponent(filePath);
+  if (checked) selectedFiles.add(decoded);
+  else selectedFiles.delete(decoded);
+  updateSelectionUI();
+  renderFileTable();
+}
+
+function updateSelectionUI() {
+  downloadSelectedBtn.disabled = selectedFiles.size === 0;
+  downloadSelectedBtn.textContent = selectedFiles.size > 0 ? `下载所选(${selectedFiles.size})` : '下载所选';
+}
+
+// ============ 文件操作 ============
+function startLogInit() {
+  if (!selectedFile || !selectedHost) return;
+  totalLinesLoaded = null;
+  isLoadingHistory = false;
+  hasMoreHistory = true;
+  isAutoScroll = true;
+  btnScroll.textContent = '自动: 开';
+  backToBottomBtn.classList.remove('show');
+  btnDownload.disabled = false;
+  btnStop.disabled = false;
+  btnFullscreen.disabled = false;
+  btnResume.style.display = 'none';
+  logBox.innerHTML = ''; logLines = [];
+  send({ type: 'init', host: selectedHost, file: selectedFile });
+}
+
+function selectFile(path, name) {
+  if (isCompressed(name)) {
+    logBox.innerHTML = `<div class="empty-state"><div class="icon">&#128230;</div><div>${name} 是压缩文件</div><div style="font-size:12px;">请下载后在本地解压查看</div></div>`;
+    previewTitle.textContent = name;
+    btnDownload.disabled = false;
+    selectedFile = path;
+    return;
+  }
+  stopTail();
+  selectedFile = path;
+  previewTitle.textContent = name || path.split('/').pop();
+  renderFileTable();
+  startLogInit();
+}
+
+function downloadOneFile(filePath) {
+  const url = '/api/download?host=' + encodeURIComponent(selectedHost) + '&file=' + encodeURIComponent(filePath);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = (filePath.split('/').pop()||'log');
+  a.click();
+}
+
+function fullscreenLogForFile(filePath) {
+  if (!filePath || !selectedHost) return;
+  window.open('/fullscreen.html?host=' + encodeURIComponent(selectedHost) + '&file=' + encodeURIComponent(filePath), '_blank');
+}
+
+function fullscreenLog() {
+  if (!selectedFile || !selectedHost) return;
+  window.open('/fullscreen.html?host=' + encodeURIComponent(selectedHost) + '&file=' + encodeURIComponent(selectedFile), '_blank');
+}
+
+function stopTail() {
+  send({ type: 'stop' });
+  currentTailId++;
+  updateConnStatus('online', '已停止');
+  btnStop.disabled = true;
+  btnFullscreen.disabled = true;
+  btnResume.style.display = 'inline-block';
+}
+
+function resumeTail() {
+  if (!selectedFile) return;
+  startLogInit();
+}
+
+function downloadFullFile() {
+  if (!selectedFile || !selectedHost) return;
+  const url = '/api/download?host=' + encodeURIComponent(selectedHost) + '&file=' + encodeURIComponent(selectedFile);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = (selectedFile.split('/').pop()||'log');
+  a.click();
+}
+
+async function downloadSelectedFiles() {
+  const files = Array.from(selectedFiles);
+  if (!files.length) return;
+  const ok = confirm(`确认下载选中的 ${files.length} 个文件？`);
+  if (!ok) return;
+
+  for (let i = 0; i < files.length; i++) {
+    const url = '/api/download?host=' + encodeURIComponent(selectedHost) + '&file=' + encodeURIComponent(files[i]);
+    const a = document.createElement('a');
+    a.href = url; a.download = (files[i].split('/').pop()||'log'); a.style.display = 'none';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    await new Promise(r => setTimeout(r, 200));
+  }
+}
+
+// ============ 日志输出 ============
+function createLogElement(line) {
+  const div = document.createElement('div');
+  div.className = 'log-line';
+  if (/\b(error|fatal|exception|panic|fail)\b/i.test(line)) div.classList.add('level-error');
+  else if (/\b(warn|warning)\b/i.test(line)) div.classList.add('level-warn');
+  if (logFilterText) {
+    const esc = logFilterText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    div.innerHTML = line.replace(new RegExp('(' + esc + ')', 'gi'), '<span class="hl">$1</span>');
+  } else {
+    div.textContent = line;
+  }
+  return div;
+}
+
+function appendLine(line) {
+  logLines.push(line);
+  if (logLines.length > MAX_LINES) logLines.shift();
+  if (logFilterText && !line.toLowerCase().includes(logFilterText.toLowerCase())) {
+    updateLineCount(); return;
+  }
+  const div = createLogElement(line);
+  logBox.appendChild(div);
+  if (isAutoScroll) logBox.scrollTop = logBox.scrollHeight;
+  updateLineCount();
+}
+
+function prependHistory(lines) {
+  const currentScrollTop = logBox.scrollTop;
+  const currentHeight = logBox.scrollHeight;
+
+  for (let i = lines.length - 1; i >= 0; i--) {
+    logLines.unshift(lines[i]);
+  }
+  while (logLines.length > MAX_LINES) logLines.pop();
+
+  if (logFilterText) {
+    reRenderLog();
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  for (let i = 0; i < lines.length; i++) {
+    fragment.appendChild(createLogElement(lines[i]));
+  }
+  logBox.prepend(fragment);
+
+  const newHeight = logBox.scrollHeight;
+  logBox.scrollTop = currentScrollTop + (newHeight - currentHeight);
+  updateLineCount();
+}
+
+function loadPrevLines() {
+  if (isLoadingHistory || !hasMoreHistory || totalLinesLoaded == null) return;
+  isLoadingHistory = true;
+  send({ type: 'load_prev', host: selectedHost, file: selectedFile, params: { skip_lines: totalLinesLoaded, limit: 200 } });
+}
+
+function backToBottom() {
+  logBox.scrollTop = logBox.scrollHeight;
+  isAutoScroll = true;
+  btnScroll.textContent = '自动: 开';
+  backToBottomBtn.classList.remove('show');
+}
+
+function reRenderLog() {
+  logFilterText = logSearchInput.value.toLowerCase();
+  logBox.innerHTML = '';
+  for (const line of logLines) {
+    if (logFilterText && !line.toLowerCase().includes(logFilterText)) continue;
+    const div = createLogElement(line);
+    logBox.appendChild(div);
+  }
+  if (isAutoScroll) logBox.scrollTop = logBox.scrollHeight;
+  updateLineCount();
+}
+
+function updateLineCount() { lineCountEl.textContent = logLines.length.toLocaleString() + ' 行'; }
+
+function toggleScroll() {
+  isAutoScroll = !isAutoScroll;
+  btnScroll.textContent = '自动: ' + (isAutoScroll ? '开' : '关');
+  if (isAutoScroll) { logBox.scrollTop = logBox.scrollHeight; backToBottomBtn.classList.remove('show'); }
+}
+
+function clearLog() { logBox.innerHTML = ''; logLines = []; updateLineCount(); }
+
+document.addEventListener('keydown', (e) => {
+  if (e.ctrlKey && e.key === 's') { e.preventDefault(); stopTail(); }
+  if (e.ctrlKey && e.key === 'l') { e.preventDefault(); clearLog(); }
+});
+
+logBox.addEventListener('scroll', () => {
+  const distToBottom = logBox.scrollHeight - logBox.scrollTop - logBox.clientHeight;
+  if (distToBottom <= 10) {
+    isAutoScroll = true;
+    btnScroll.textContent = '自动: 开';
+    backToBottomBtn.classList.remove('show');
+  } else {
+    isAutoScroll = false;
+    btnScroll.textContent = '自动: 关';
+    backToBottomBtn.classList.add('show');
+  }
+  if (logBox.scrollTop <= 50 && !isLoadingHistory && hasMoreHistory && selectedFile && selectedHost) {
+    loadPrevLines();
+  }
+});
+
+// ============ 初始化 ============
+loadHosts(); connect();
+</script>
+</body>
+</html>
