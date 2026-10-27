@@ -89,7 +89,7 @@ GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o logviewer .
 ./stop.sh && mv -f logviewer.new logviewer && chmod +x logviewer && ./start.sh
 ```
 
-构建时也可以直接注入版本号：`-ldflags "-s -w -X main.version=v2.3.1"`。
+构建时也可以直接注入版本号：`-ldflags "-s -w -X main.version=v2.4.1"`。
 
 ## 配置文件
 
@@ -242,11 +242,11 @@ start.sh, stop.sh, restart.sh
 
 ## 版本
 
-当前版本 **v2.3**，版本号唯一来源是 `main.go` 里的 `var version = "v2.3"`，页面通过 `GET /api/version` 获取。不修改源码也可以注入版本号：
+当前版本 **v2.4**，版本号唯一来源是 `main.go` 里的 `var version = "v2.4"`，页面通过 `GET /api/version` 获取。不修改源码也可以注入版本号：
 
 ```bash
-go build -ldflags "-s -w -X main.version=v2.3.1" -o logviewer .
-./logviewer -version        # 输出 v2.3
+go build -ldflags "-s -w -X main.version=v2.4.1" -o logviewer .
+./logviewer -version        # 输出 v2.4
 ```
 
 版本沿革：
@@ -258,6 +258,7 @@ go build -ldflags "-s -w -X main.version=v2.3.1" -o logviewer .
 | v2.1 | 日志等级着色（红 / 黄 / 绿 / 白） |
 | v2.2 | 同一主机可配置多份日志（一行一栏）；新增 `restart.sh` |
 | v2.3 | 修复停止追踪后「全屏追踪」按钮被置灰、点击无效的问题 |
+| v2.4 | 性能：向上翻页改为按字节窗口增量读取（不再重扫文件）、WebSocket 100ms 批量推流、主机日志页批量渲染并限制 DOM 节点 |
 
 精简版（只有主机日志，无 Tab、无应用分栏、无路径追踪）维护在同一仓库的 `v1-lite` 分支，版本号 v1.0，默认端口 13344。
 

@@ -18,11 +18,13 @@ html, body {
   background: linear-gradient(135deg, #071734, #0a1f4f);
   color: #fff; padding: 0 20px;
   display: flex; align-items: center; justify-content: space-between;
+  position: relative;
   box-shadow: 0 4px 16px rgba(13,39,80,0.15); z-index: 10;
 }
 .topbar .title { font-size: 17px; font-weight: 700; letter-spacing: 2px; }
 .topbar { gap: 28px; }
-.tabs { display: flex; gap: 4px; align-self: stretch; align-items: center; }
+/* 标签绝对居中：右侧状态文字变化（实时追踪中 / 已停止）不再挤动标签位置 */
+.tabs { position: absolute; left: 50%; top: 0; height: 100%; transform: translateX(-50%); display: flex; gap: 4px; align-items: center; }
 .tabs a {
   color: #b9c8e4; text-decoration: none; font-size: 14px; font-weight: 600;
   padding: 7px 16px; border-radius: 9px; transition: all .15s;
@@ -34,7 +36,7 @@ html, body {
 .conn-dot.offline { background: #f85149; }
 .conn-dot.tailing { background: #58a6ff; animation: pulse 1.2s infinite; }
 @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
-.topbar-right { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.topbar-right { display: flex; align-items: center; gap: 10px; font-size: 13px; flex-shrink: 0; white-space: nowrap; }
 
 .wrap {
   height: calc(100vh - var(--topbar-h));
@@ -258,6 +260,7 @@ tr.directory:hover td { background: #eff6ff; }
 let ws = null, reconnectTimer = null, reconnectDelay = 1000;
 let connected = false, selectedHost = null, selectedFile = null;
 let logLines = [], logFilterText = '';
+let pendingLines = [], flushTimer = null;
 let currentItems = [], visibleItems = [];
 let currentPath = '';
 let hosts = [];
@@ -338,6 +341,7 @@ function handleMessage(msg) {
     case 'init_response':
       totalLinesLoaded = msg.data.total_lines;
       hasMoreHistory = msg.data.has_more;
+      dropPending();
       logLines = [];
       logBox.innerHTML = '';
       const initLines = msg.data.lines || [];
@@ -352,6 +356,9 @@ function handleMessage(msg) {
       break;
     case 'new_line':
       appendLine(msg.data);
+      break;
+    case 'new_lines':
+      for (const line of (msg.data || [])) appendLine(line);
       break;
     case 'prev_lines':
       isLoadingHistory = false;
@@ -759,13 +766,35 @@ function createLogElement(line) {
 function appendLine(line) {
   logLines.push(line);
   if (logLines.length > MAX_LINES) logLines.shift();
-  if (logFilterText && !line.toLowerCase().includes(logFilterText.toLowerCase())) {
-    updateLineCount(); return;
-  }
-  const div = createLogElement(line);
-  logBox.appendChild(div);
-  if (isAutoScroll) logBox.scrollTop = logBox.scrollHeight;
+  pendingLines.push(line);
+  scheduleFlush();
   updateLineCount();
+}
+
+function scheduleFlush() {
+  if (flushTimer) return;
+  flushTimer = setTimeout(flushLines, 120);
+}
+
+// 批量渲染：120ms 汇总一次，并限制 DOM 节点数，避免高频日志卡死渲染进程
+function flushLines() {
+  flushTimer = null;
+  if (!pendingLines.length) return;
+  const fragment = document.createDocumentFragment();
+  for (const line of pendingLines) {
+    if (logFilterText && !line.toLowerCase().includes(logFilterText)) continue;
+    fragment.appendChild(createLogElement(line));
+  }
+  pendingLines = [];
+  if (fragment.childNodes.length) logBox.appendChild(fragment);
+  while (logBox.childElementCount > 6000) logBox.removeChild(logBox.firstElementChild);
+  if (isAutoScroll) logBox.scrollTop = logBox.scrollHeight;
+}
+
+function dropPending() {
+  pendingLines = [];
+  clearTimeout(flushTimer);
+  flushTimer = null;
 }
 
 function prependHistory(lines) {
@@ -808,6 +837,7 @@ function backToBottom() {
 
 function reRenderLog() {
   logFilterText = logSearchInput.value.toLowerCase();
+  dropPending();
   logBox.innerHTML = '';
   for (const line of logLines) {
     if (logFilterText && !line.toLowerCase().includes(logFilterText)) continue;
@@ -826,7 +856,7 @@ function toggleScroll() {
   if (isAutoScroll) { logBox.scrollTop = logBox.scrollHeight; backToBottomBtn.classList.remove('show'); }
 }
 
-function clearLog() { logBox.innerHTML = ''; logLines = []; updateLineCount(); }
+function clearLog() { dropPending(); logBox.innerHTML = ''; logLines = []; updateLineCount(); }
 
 document.addEventListener('keydown', (e) => {
   if (e.ctrlKey && e.key === 's') { e.preventDefault(); stopTail(); }

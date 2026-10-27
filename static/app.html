@@ -15,14 +15,15 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: "Microsof
   box-shadow: 0 4px 16px rgba(13,39,80,.15); position: relative; z-index: 10;
 }
 .brand { font-size: 17px; font-weight: 700; letter-spacing: 2px; }
-.tabs { display: flex; gap: 4px; align-self: stretch; align-items: center; }
+/* 标签绝对居中：右侧状态文字变化（实时追踪中 / 已停止）不再挤动标签位置 */
+.tabs { position: absolute; left: 50%; top: 0; height: 100%; transform: translateX(-50%); display: flex; gap: 4px; align-items: center; }
 .tabs a {
   color: #b9c8e4; text-decoration: none; font-size: 14px; font-weight: 600;
   padding: 7px 16px; border-radius: 9px; transition: all .15s;
 }
 .tabs a:hover { background: rgba(255,255,255,.08); color: #fff; }
 .tabs a.active { background: #2b8cff; color: #fff; box-shadow: 0 3px 10px rgba(43,140,255,.4); }
-.topbar-right { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.topbar-right { display: flex; align-items: center; gap: 10px; font-size: 13px; flex-shrink: 0; white-space: nowrap; }
 .conn-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
 .conn-dot.online { background: #3fb950; }
 .conn-dot.offline { background: #f85149; }
@@ -337,11 +338,10 @@ class Pane {
         break;
       }
       case 'new_line':
-        this.lines.push(msg.data);
-        if (this.lines.length > MAX_LINES) this.lines.shift();
-        this.pending.push(msg.data);
-        this.scheduleFlush();
-        this.updateCount();
+        this.pushLine(msg.data);
+        break;
+      case 'new_lines':
+        for (const line of (msg.data || [])) this.pushLine(line);
         break;
       case 'status':
         if (msg.status === 'tailing') {
@@ -360,6 +360,14 @@ class Pane {
         }
         break;
     }
+  }
+
+  pushLine(line) {
+    this.lines.push(line);
+    if (this.lines.length > MAX_LINES) this.lines.shift();
+    this.pending.push(line);
+    this.scheduleFlush();
+    this.updateCount();
   }
 
   match(line) {
