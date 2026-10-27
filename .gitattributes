@@ -1,0 +1,3 @@
+# keep LF everywhere so Linux checkouts stay runnable
+* text=auto eol=lf
+*.sh text eol=lf
