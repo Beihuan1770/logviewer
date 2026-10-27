@@ -259,6 +259,8 @@ go build -ldflags "-s -w -X main.version=v2.3.1" -o logviewer .
 | v2.2 | 同一主机可配置多份日志（一行一栏）；新增 `restart.sh` |
 | v2.3 | 修复停止追踪后「全屏追踪」按钮被置灰、点击无效的问题 |
 
+精简版（只有主机日志，无 Tab、无应用分栏、无路径追踪）维护在同一仓库的 `v1-lite` 分支，版本号 v1.0，默认端口 13344。
+
 ## 许可证
 
 Apache-2.0，见 [LICENSE](LICENSE)。
