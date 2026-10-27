@@ -40,20 +40,54 @@
 
 ## 快速开始
 
+运行目标机**不需要 Go，也不需要编译**——拿到 `logviewer` 二进制就能跑。
+
+### 1. 准备二进制
+
+任选一种来源：
+
+- 直接从已有的部署目录拷贝 `logviewer`；
+- 从本仓库 Releases 下载（若该版本附带了二进制资产）；
+- 自己编译（只有改了代码才需要，见下方「从源码构建」）。
+
+把二进制和脚本放进同一个目录，并赋予执行权限：
+
 ```bash
-# 1. 编译（在装有 Go 的机器上交叉编译；目标机不需要 Go）
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o logviewer .
-
-# 2. 配置
-cp config.example.yaml config.yaml
-vi config.yaml
-
-# 3. 启动（默认读取同目录的 config.yaml）
-./start.sh
-
-# 4. 浏览器访问
-#    http://<服务器地址>:23344/
+mkdir -p /data/apps/logviewer && cd /data/apps/logviewer
+chmod +x logviewer start.sh stop.sh restart.sh
 ```
+
+### 2. 配置
+
+```bash
+cp config.example.yaml config.yaml
+vi config.yaml          # 至少填好 hosts 和 apps
+```
+
+### 3. 启动与访问
+
+```bash
+./start.sh              # 默认读取同目录的 config.yaml
+# 浏览器打开 http://<服务器地址>:23344/
+```
+
+进程号与日志写在当前目录的 `logviewer.pid`、`logviewer.log`；停止用 `./stop.sh`，重启用 `./restart.sh`。
+
+### 从源码构建（开发者）
+
+只有修改代码时才需要，构建在装有 Go 的机器上完成，目标机不需要 Go：
+
+```bash
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o logviewer .
+```
+
+替换已有部署时，先把新二进制传到部署目录的 `logviewer.new`，再执行：
+
+```bash
+./stop.sh && mv -f logviewer.new logviewer && chmod +x logviewer && ./start.sh
+```
+
+构建时也可以直接注入版本号：`-ldflags "-s -w -X main.version=v2.2.1"`。
 
 ## 配置文件
 
@@ -186,8 +220,8 @@ path_roots:
 
 ## 环境要求
 
-- 构建：Go 1.21+
-- 运行：Linux（或任意 Go 支持的平台），单个静态二进制，无需额外依赖
+- 运行：**不需要 Go，也不需要编译**，单个静态二进制即可，Linux 及任意 Go 目标平台都可
+- 构建：仅修改代码时需要，Go 1.21+，交叉编译即可（目标机不用装 Go）
 - 目标主机：支持密码 SSH 登录；具备 `tail`、`find`、`stat` 命令（Linux 标准发行版都有）
 
 ## 目录结构
