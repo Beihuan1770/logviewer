@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>全屏日志追踪</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; font-family: Consolas, Monaco, "JetBrains Mono", monospace; background: #0a0e13; color: #e6edf3; display: flex; flex-direction: column; }
+
+.topbar {
+  height: 38px; background: #12171f; border-bottom: 1px solid #21262d;
+  display: flex; align-items: center; padding: 0 12px; justify-content: space-between; flex-shrink: 0;
+}
+.topbar-left { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.topbar-left .conn-dot { width: 8px; height: 8px; border-radius: 50%; }
+.topbar-left .conn-dot.online { background: #3fb950; }
+.topbar-left .conn-dot.offline { background: #f85149; }
+.topbar-left .conn-dot.tailing { background: #58a6ff; animation: pulse 1.2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+.topbar-right { display: flex; gap: 6px; align-items: center; }
+.btn {
+  border: 1px solid #30363d; outline: none; border-radius: 6px; font-size: 12px; cursor: pointer;
+  background: #21262d; color: #c9d1d9; padding: 4px 10px; white-space: nowrap;
+}
+.btn:hover { background: #30363d; }
+.btn-danger { color: #f85149; border-color: #f8514966; }
+.btn-danger:hover { background: #da363340; }
+input { background: #0d1117; border: 1px solid #30363d; color: #c9d1d9; padding: 4px 8px; border-radius: 6px; font-size: 13px; outline: none; width: 200px; }
+input:focus { border-color: #58a6ff; }
+
+.log-box {
+  flex: 1; min-height: 0; overflow-y: auto; padding: 2px 0; font-size: 14px; line-height: 1.55;
+}
+.log-box::-webkit-scrollbar { width: 8px; }
+.log-box::-webkit-scrollbar-track { background: transparent; }
+.log-box::-webkit-scrollbar-thumb { background: #30363d; border-radius: 4px; }
+.log-line { padding: 1px 16px; white-space: pre-wrap; word-break: break-all; border-bottom: 1px solid rgba(255,255,255,0.015); }
+.log-line:nth-child(odd) { background: rgba(255,255,255,0.008); }
+.log-line .hl { background: rgba(210,153,29,0.5); padding: 0 1px; border-radius: 2px; color: #fff; }
+.log-line.level-error { color: #ff7b72; background: rgba(248,81,73,0.10); border-left: 2px solid #f85149; }
+.log-line.level-warn { color: #e3b341; background: rgba(210,153,29,0.10); border-left: 2px solid #d2991d; }
+.log-line.level-success { color: #56d364; background: rgba(63,185,80,0.10); border-left: 2px solid #3fb950; }
+
+#backToBottom {
+  position: absolute; bottom: 12px; right: 18px; z-index: 5;
+  display: none;
+}
+#backToBottom.show { display: inline-block; }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="topbar-left">
+    <span class="conn-dot online" id="statusDot"></span>
+    <span id="titleText" style="font-weight:600;">日志追踪</span>
+    <span id="statusText" style="color:#8b949e;font-size:12px;">连接中...</span>
+    <span id="lineCount" style="color:#8b949e;font-size:12px;">0 行</span>
+    <span id="appVer" style="color:#8b949e;font-size:12px;"></span>
+  </div>
+  <div class="topbar-right">
+    <input id="logSearchInput" type="text" placeholder="搜索..." oninput="reRenderLog()" />
+    <button class="btn" id="btnScroll" onclick="toggleScroll()">自动: 开</button>
+    <button class="btn btn-danger" id="btnStop" onclick="stopLive()">停止追踪</button>
+    <button class="btn" id="btnResume" style="display:none;" onclick="resumeLive()">继续追踪</button>
+    <button class="btn" onclick="clearLog()">清屏</button>
+  </div>
+</div>
+<div style="flex:1; min-height:0; position:relative; display:flex; flex-direction:column; overflow:hidden;">
+  <div class="log-box" id="logBox"></div>
+  <button class="btn" id="backToBottom" onclick="backToBottom()">回到最新 ↓</button>
+</div>
+
+<script>
+const params = new URLSearchParams(location.search);
+const HOST = params.get('host');
+const FILE = params.get('file');
+
+if (!HOST || !FILE) {
+  document.getElementById('logBox').innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#484f58;">缺少参数: host 或 file</div>';
+}
+
+document.title = (FILE||'').split('/').pop() + ' - 全屏追踪';
+document.getElementById('titleText').textContent = (FILE||'').split('/').pop();
+
+let ws = null, reconnectTimer = null, reconnectDelay = 1000;
+let connected = false;
+let logLines = [], logFilterText = '';
+let currentTailId = 0;
+
+let isAutoScroll = true;
+let totalLinesLoaded = null;
+let isLoadingHistory = false;
+let hasMoreHistory = true;
+
+const MAX_LINES = 30000;
+
+const logBox = document.getElementById('logBox');
+const logSearchInput = document.getElementById('logSearchInput');
+const btnStop = document.getElementById('btnStop');
+const btnResume = document.getElementById('btnResume');
+const btnScroll = document.getElementById('btnScroll');
+const backToBottomBtn = document.getElementById('backToBottom');
+const statusDot = document.getElementById('statusDot');
+const statusText = document.getElementById('statusText');
+const lineCountEl = document.getElementById('lineCount');
+
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(proto + '//' + location.host + '/ws');
+  ws.onopen = () => {
+    connected = true; reconnectDelay = 1000;
+    updateConnStatus('online', '已连接');
+    startLive();
+  };
+  ws.onmessage = (evt) => {
+    let msg; try { msg = JSON.parse(evt.data); } catch(e) { return; }
+    handleMessage(msg);
+  };
+  ws.onclose = () => {
+    connected = false;
+    updateConnStatus('offline', '断开，重连中...');
+    btnStop.disabled = true;
+    btnResume.style.display = 'none';
+    scheduleReconnect();
+  };
+  ws.onerror = () => { ws.close(); };
+}
+
+function scheduleReconnect() {
+  clearTimeout(reconnectTimer);
+  reconnectTimer = setTimeout(() => { connect(); reconnectDelay = Math.min(reconnectDelay * 2, 30000); }, reconnectDelay);
+}
+
+function send(msg) {
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+}
+
+function updateConnStatus(cls, text) {
+  statusDot.className = 'conn-dot ' + cls;
+  statusText.textContent = text;
+}
+
+function startLive() {
+  if (!HOST || !FILE) return;
+  totalLinesLoaded = null;
+  isLoadingHistory = false;
+  hasMoreHistory = true;
+  isAutoScroll = true;
+  btnScroll.textContent = '自动: 开';
+  backToBottomBtn.classList.remove('show');
+  logBox.innerHTML = ''; logLines = [];
+  send({ type: 'init', host: HOST, file: FILE });
+}
+
+function stopLive() {
+  send({ type: 'stop' });
+  currentTailId++;
+  updateConnStatus('online', '已停止');
+  btnStop.disabled = true;
+  btnResume.style.display = 'inline-block';
+}
+
+function resumeLive() {
+  if (!HOST || !FILE) return;
+  startLive();
+}
+
+function handleMessage(msg) {
+  switch (msg.type) {
+    case 'init_response':
+      totalLinesLoaded = msg.data.total_lines;
+      hasMoreHistory = msg.data.has_more;
+      logLines = [];
+      logBox.innerHTML = '';
+      const initLines = msg.data.lines || [];
+      const frag = document.createDocumentFragment();
+      for (const line of initLines) {
+        logLines.push(line);
+        frag.appendChild(createLogElement(line));
+      }
+      logBox.appendChild(frag);
+      if (isAutoScroll) logBox.scrollTop = logBox.scrollHeight;
+      updateLineCount();
+      break;
+    case 'new_line':
+      appendLine(msg.data);
+      break;
+    case 'prev_lines':
+      isLoadingHistory = false;
+      const pData = msg.data;
+      totalLinesLoaded = pData.total_lines;
+      hasMoreHistory = pData.has_more;
+      if (!pData.lines || !pData.lines.length) break;
+      prependHistory(pData.lines);
+      break;
+    case 'status':
+      if (msg.status === 'tailing') {
+        currentTailId = msg.tailId || 0;
+        updateConnStatus('tailing', '实时追踪中');
+        btnStop.disabled = false;
+        btnResume.style.display = 'none';
+      } else if (msg.status === 'stopped') {
+        if ((msg.tailId || 0) !== currentTailId) return;
+        updateConnStatus('online', '已停止');
+        btnStop.disabled = true;
+        btnResume.style.display = 'inline-block';
+      }
+      break;
+    case 'error':
+      isLoadingHistory = false;
+      updateConnStatus('online', msg.message);
+      btnStop.disabled = true;
+      btnResume.style.display = 'inline-block';
+      break;
+  }
+}
+
+// ============ 日志等级着色 ============
+// 划分：错误=红，警告=黄，成功=绿，普通（INFO/DEBUG/无等级）=白
+// 先认行首的显式等级字段（level=error / [WARN] / "ERROR 1234 ---" 等），
+// 没有等级字段再按整行关键字兜底，避免把正文里的 success/error 当成等级。
+const LEVEL_CLASS = {
+  error: 'level-error', err: 'level-error', fatal: 'level-error', panic: 'level-error',
+  critical: 'level-error', crit: 'level-error', severe: 'level-error', emerg: 'level-error', alert: 'level-error',
+  warn: 'level-warn', warning: 'level-warn',
+  success: 'level-success', ok: 'level-success', pass: 'level-success', passed: 'level-success',
+  done: 'level-success', completed: 'level-success',
+  info: '', notice: '', debug: '', trace: '', verbose: ''
+};
+
+function levelClass(line) {
+  const head = line.slice(0, 120);
+  let lv = '';
+  const kv = head.match(/(?:level|severity|lvl)"?\s*[=:]\s*"?([a-zA-Z]+)/);
+  if (kv) lv = kv[1].toLowerCase();
+  if (!lv) {
+    const tok = head.match(/(?:^|[\s\[|(])(TRACE|DEBUG|VERBOSE|INFO|NOTICE|SUCCESS|OK|WARN|WARNING|ERROR|ERR|FATAL|PANIC|CRITICAL|SEVERE|ALERT|EMERG)(?=[\s\]|):,;-]|$)/i);
+    if (tok) lv = tok[1].toLowerCase();
+  }
+  if (lv && LEVEL_CLASS[lv] !== undefined) return LEVEL_CLASS[lv];
+
+  if (/\b(?:error|fatal|panic|critical|exception|failed|failure|refused)\b/i.test(line) || /失败|错误|异常|崩溃|未完成/.test(line)) return 'level-error';
+  if (/\b(?:warn|warning)\b/i.test(line) || /警告|告警|超时/.test(line)) return 'level-warn';
+  if (/\b(?:success|succeeded|successful|completed|passed|ok|okay)\b/i.test(line) || /成功|已启动|已完成|就绪/.test(line)) return 'level-success';
+  return '';
+}
+
+function createLogElement(line) {
+  const div = document.createElement('div');
+  div.className = 'log-line';
+  const lvCls = levelClass(line);
+  if (lvCls) div.classList.add(lvCls);
+  if (logFilterText) {
+    const esc = logFilterText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    div.innerHTML = line.replace(new RegExp('(' + esc + ')', 'gi'), '<span class="hl">$1</span>');
+  } else {
+    div.textContent = line;
+  }
+  return div;
+}
+
+function appendLine(line) {
+  logLines.push(line);
+  if (logLines.length > MAX_LINES) logLines.shift();
+  if (logFilterText && !line.toLowerCase().includes(logFilterText.toLowerCase())) {
+    updateLineCount(); return;
+  }
+  const div = createLogElement(line);
+  logBox.appendChild(div);
+  if (isAutoScroll) logBox.scrollTop = logBox.scrollHeight;
+  updateLineCount();
+}
+
+function prependHistory(lines) {
+  const currentScrollTop = logBox.scrollTop;
+  const currentHeight = logBox.scrollHeight;
+
+  for (let i = lines.length - 1; i >= 0; i--) {
+    logLines.unshift(lines[i]);
+  }
+  while (logLines.length > MAX_LINES) logLines.pop();
+
+  if (logFilterText) {
+    reRenderLog();
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  for (let i = 0; i < lines.length; i++) {
+    fragment.appendChild(createLogElement(lines[i]));
+  }
+  logBox.prepend(fragment);
+
+  const newHeight = logBox.scrollHeight;
+  logBox.scrollTop = currentScrollTop + (newHeight - currentHeight);
+  updateLineCount();
+}
+
+function loadPrevLines() {
+  if (isLoadingHistory || !hasMoreHistory || totalLinesLoaded == null) return;
+  isLoadingHistory = true;
+  send({ type: 'load_prev', host: HOST, file: FILE, params: { skip_lines: totalLinesLoaded, limit: 200 } });
+}
+
+function backToBottom() {
+  logBox.scrollTop = logBox.scrollHeight;
+  isAutoScroll = true;
+  btnScroll.textContent = '自动: 开';
+  backToBottomBtn.classList.remove('show');
+}
+
+function reRenderLog() {
+  logFilterText = logSearchInput.value.toLowerCase();
+  logBox.innerHTML = '';
+  for (const line of logLines) {
+    if (logFilterText && !line.toLowerCase().includes(logFilterText)) continue;
+    const div = createLogElement(line);
+    logBox.appendChild(div);
+  }
+  if (isAutoScroll) logBox.scrollTop = logBox.scrollHeight;
+  updateLineCount();
+}
+
+function updateLineCount() { lineCountEl.textContent = logLines.length.toLocaleString() + ' 行'; }
+
+function toggleScroll() {
+  isAutoScroll = !isAutoScroll;
+  btnScroll.textContent = '自动: ' + (isAutoScroll ? '开' : '关');
+  if (isAutoScroll) { logBox.scrollTop = logBox.scrollHeight; backToBottomBtn.classList.remove('show'); }
+}
+
+function clearLog() { logBox.innerHTML = ''; logLines = []; updateLineCount(); }
+
+document.addEventListener('keydown', (e) => {
+  if (e.ctrlKey && e.key === 's') { e.preventDefault(); stopLive(); }
+  if (e.ctrlKey && e.key === 'l') { e.preventDefault(); clearLog(); }
+});
+
+logBox.addEventListener('scroll', () => {
+  const distToBottom = logBox.scrollHeight - logBox.scrollTop - logBox.clientHeight;
+  if (distToBottom <= 10) {
+    isAutoScroll = true;
+    btnScroll.textContent = '自动: 开';
+    backToBottomBtn.classList.remove('show');
+  } else {
+    isAutoScroll = false;
+    btnScroll.textContent = '自动: 关';
+    backToBottomBtn.classList.add('show');
+  }
+  if (logBox.scrollTop <= 50 && !isLoadingHistory && hasMoreHistory && HOST && FILE) {
+    loadPrevLines();
+  }
+});
+
+connect();
+</script>
+<script>
+// 版本号：统一从 /api/version 读（main.go 里的 version 变量），取不到就留空
+fetch('/api/version').then(function (r) { return r.json(); }).then(function (d) {
+  var el = document.getElementById('appVer');
+  if (el) el.textContent = d.version || '';
+}).catch(function () { });
+</script>
+</body>
+</html>

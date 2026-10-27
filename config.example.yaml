@@ -1,0 +1,14 @@
+# 复制为 config.yaml 后修改。config.yaml 含主机明文密码，已被 git 忽略。
+# 本文件是 v1 精简版（只有主机日志），不含应用日志与路径追踪的配置项。
+
+port: 13344
+tail_lines: 200            # 首次打开加载的行数，也是向上翻页的起点
+
+defaults:
+  user: root
+  port: 22
+  dir: /var/log/app        # 主机日志页的默认根目录
+
+hosts:                     # 主机定义一次，其他位置按昵称引用
+  - web1: {ip: 10.0.0.11, label: Web 1, pass: 'change-me'}
+  - web2: {ip: 10.0.0.12, label: Web 2, pass: 'change-me'}

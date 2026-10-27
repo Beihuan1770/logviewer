@@ -1,0 +1,18 @@
+# local configuration contains credentials
+config.yaml
+config.json
+
+# build output
+/logviewer
+/logviewer.exe
+*.exe
+
+# runtime files
+*.log
+*.pid
+
+# editors / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
