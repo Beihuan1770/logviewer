@@ -53,7 +53,9 @@
 把二进制和脚本放进同一个目录，并赋予执行权限：
 
 ```bash
-mkdir -p /data/apps/logviewer && cd /data/apps/logviewer
+cd /data/apps && unzip logviewer_linux_amd64.zip
+mv logviewer_linux_amd64 logviewer
+cd logviewer
 chmod +x logviewer start.sh stop.sh restart.sh
 ```
 
