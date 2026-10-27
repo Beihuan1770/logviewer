@@ -1,110 +1,123 @@
-# logviewer
+# logviewer · 日志追踪系统
 
-A lightweight, SSH-based log tailing console for a small fleet of servers.
+一个用 SSH 直连服务器的轻量日志查看工具。浏览器打开一个页面就能实时追踪多台主机上的日志——不装 agent、不做日志收集、日志不落盘，部署只需要一个可执行文件加一份配置文件。
 
-No ELK, no agents, no log shipping. The binary connects to each host over SSH,
-streams `tail -F` output to the browser over WebSocket, and lets you switch
-between hosts, applications, and arbitrary files from one page.
+> 面向内网使用：**没有登录鉴权**，主机密码以明文写在 `config.yaml` 里。不要把它暴露到公网。
 
-> Intended for an isolated internal network. There is **no authentication** and
-> host passwords are stored in plain text in `config.yaml`. Do not expose it to
-> the internet.
+## 适用场景
 
-## Features
+- 内网几十台机器，看日志不想一台台 `ssh` + `tail`
+- 同一个服务跑在多台机器上，需要并排对照着看
+- 临时想看某个日志文件，不想为此部署 ELK / Loki
+- 日志有几百 MB，只想看尾部，需要时再往上翻
 
-- **Three ways to read logs**
-  - *Host logs* — browse a host's log directory, pick a file, tail it.
-  - *Application logs* — predefined application entries, one column per host,
-    side by side, for correlating the same service across machines.
-  - *Path* — paste any absolute path and tail it immediately (recent paths are
-    remembered in the browser).
-- Live tail with pause / resume, per-pane download, and a full-screen view.
-- Content filter with highlighted matches; log lines are coloured by level —
-  errors red, warnings amber, successes green, everything else plain white.
-  An explicit level field (`level=error`, `[WARN]`, `ERROR 1234 ---`) wins over
-  keyword matching, so words like "success" inside an INFO message stay white.
-- Scroll to the top to page in older lines without losing your position.
-- Single static binary: the front-end is embedded with `go:embed`.
-- Hosts are declared once and referenced by nickname; app entries list the
-  exact `host:path` pairs, so there is no guessing of file names.
+## 工作原理
 
-## Version
-
-Current release: **v2.1** (git tag `v2.1`). The version string lives in one
-place — `var version = "v2.1"` in `main.go` — and every page shows it next to
-the title, fetched from `GET /api/version`. To stamp a different version without
-editing the source:
-
-```bash
-go build -ldflags "-s -w -X main.version=v2.1.1" -o logviewer .
-./logviewer -version        # prints "v2.1" and exits
+```
+浏览器  ── WebSocket ──  logviewer(Go)  ── SSH ──  目标主机
+                                                tail -F / find / stat / cat
 ```
 
-## Quick start
+- 后端为每台主机维持一个 SSH 连接（30 秒 keepalive），每次读日志再开独立会话
+- 首次打开用 `tail -n N` 一次性取回末尾内容，之后用 `tail -n 0 -F` 只推新增行，不会重复
+- 每行经 WebSocket 推给浏览器；前端按 150ms 批量渲染，并限制 DOM 节点数和内存行数
+- 四个页面用 `go:embed` 内嵌进二进制，所以部署只有一个可执行文件
+
+## 功能
+
+- **三种看法**
+  - *主机日志*：按主机浏览日志目录，点文件即可实时追踪
+  - *应用日志*：按 `apps` 配置把同一应用在多台主机上的日志并排分栏
+  - *路径追踪*：输入任意绝对路径即开即看，最近访问会记住
+- 实时追踪：暂停 / 继续、全屏、下载整份文件
+- 向上翻历史：滚动到顶部自动加载更早 200 行，视线位置不跳
+- 内容过滤：关键字过滤并高亮命中（应用页的过滤对所有分栏同时生效）
+- 日志等级着色：错误红、警告黄、成功绿、其余白
+- 分栏数量由配置行数决定：一行一栏，单机单日志就是一栏铺满；同一主机可以写多行
+- 目录浏览：文件名搜索、按修改时间筛选、多选批量下载
+- 路径白名单：默认允许任意绝对路径，也可以关闭并限定目录
+- 配置自检：`-check` 打印解析结果，启动前先核对
+
+## 快速开始
 
 ```bash
-# 1. build (from a machine with Go; cross-compile for the target)
+# 1. 编译（在装有 Go 的机器上交叉编译；目标机不需要 Go）
 GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o logviewer .
 
-# 2. configure
+# 2. 配置
 cp config.example.yaml config.yaml
 vi config.yaml
 
-# 3. run
-./start.sh                 # writes logviewer.pid, logs to logviewer.log
-# or: ./logviewer -config config.yaml
+# 3. 启动（默认读取同目录的 config.yaml）
+./start.sh
+
+# 4. 浏览器访问
+#    http://<服务器地址>:23344/
 ```
 
-Then open `http://<server>:23344/`. The port comes from `config.yaml`.
+## 配置文件
 
-To stop, run `./stop.sh`, which only touches the process started from the
-same directory (verified through `/proc/<pid>/cwd`).
+`config.yaml` 是 YAML 格式，全部字段如下：
 
-## Configuration
+| 字段 | 说明 | 默认值 |
+|:--|:--|:--|
+| `port` | 监听端口 | `23344` |
+| `tail_lines` | 首次打开加载的行数，也是向上翻页的起点 | 代码内 `1000`，示例文件写 `200` |
+| `allow_any_path` | 「路径追踪」页是否允许打开任意绝对路径 | `false` |
+| `path_roots` | `allow_any_path: false` 时额外放行的目录列表 | 空 |
+| `defaults.user` | 主机未显式填写时的 SSH 用户 | `root` |
+| `defaults.port` | 主机未显式填写时的 SSH 端口 | `22` |
+| `defaults.dir` | 主机未显式填写时的日志根目录（代码内为 `/data/projects/drone_logs`，建议显式配置） | — |
 
-`config.yaml` is YAML, with application entries written as plain blocks:
+### 主机（hosts）
+
+主机只定义一次，后续都用昵称引用：
 
 ```yaml
-port: 23344
-tail_lines: 200            # lines loaded on first open
-allow_any_path: true       # the Path tab may open any absolute path
-
 defaults:
   user: root
   port: 22
   dir: /var/log/app
 
-hosts:                     # declared once, referenced by nickname
+hosts:
   - web1: {ip: 10.0.0.11, label: Web 1, pass: 'change-me'}
   - web2: {ip: 10.0.0.12, label: Web 2, pass: 'change-me'}
+```
 
+- key 就是昵称，`apps` 和页面里都用它
+- `label` 是界面显示名，不写则显示昵称
+- 单台主机可覆盖 `user` / `port` / `dir`，不写就继承 `defaults`
+- 昵称重复、缺少 `ip` 会在启动时直接报错
+
+### 应用（apps）
+
+用块写法描述「哪个应用看哪几份日志」：
+
+```yaml
 apps: |
-  gateway 网关[
-  web1:/var/log/app/gateway.log
-  web2:/var/log/app/gateway.log
+  flightcontrol 飞控[
+  web1:/data/logs/flightcontrol.log
+  web2:/data/logs/flightcontrol.log
   ]
 
-  worker[
-  web1:/var/log/app/worker.log
-  web2:/var/log/app/worker.log
+  flightcontrol-error 飞控错误[
+  web1:/data/logs/flightcontrol-error.log
   ]
 ```
 
-Inside `apps`, each block is:
+规则：
 
-```
-application-id [display name][
-host-nickname:/absolute/path/on/that/host
-...
-]
-```
+- 每块以 `应用id 显示名[` 开头、单独一行 `]` 结束；显示名可省略
+- **块顺序 = 下拉框顺序，行顺序 = 分栏从左到右的顺序**
+- 每行写 `主机昵称:绝对路径`，程序不做任何路径拼接，路径必须 `/` 开头
+- **一行 = 一栏**：只写一行，应用日志页就只有一个铺满整宽的面板
+- **同一主机可以出现多行**，例如主日志和它的 error 日志各占一栏
+- 缺 `]`、行内没有冒号、路径不是绝对路径、引用了未知主机，都会在启动时报错并指出行号
+- 旧版的 YAML 列表写法（`- flightcontrol: 飞控`）仍然兼容
 
-Block order is the dropdown order; line order is the column order. Paths must be
-absolute and are used verbatim. A missing `]`, a line without `host:path`, a
-relative path, or an unknown host aborts startup with the offending line number.
+### 路径白名单
 
-`allow_any_path: false` restricts reads to the configured directories and files
-plus an optional allow-list:
+默认 `allow_any_path: true`，任何绝对路径都能打开。若不希望这样，改成 `false` 并限定目录：
 
 ```yaml
 allow_any_path: false
@@ -113,46 +126,102 @@ path_roots:
   - /data/logs
 ```
 
-Verify what the server actually parsed with:
+关闭后，只有 `hosts[*].dir`、`apps` 里声明过的文件、以及 `path_roots` 下的路径可读。
+
+### 校验与生效
 
 ```bash
-./logviewer -config config.yaml -check
+./logviewer -config config.yaml -check   # 打印解析后的主机与应用清单（不含密码）
+./restart.sh                             # 配置改动后重启生效（没有热重载）
 ```
 
-It prints hosts and resolved sources as JSON (passwords are never printed).
+## 页面用法
 
-## HTTP endpoints
+| 页面 | 地址 | 用途 |
+|:--|:--|:--|
+| 主机日志 | `/` | 选主机 → 逐级浏览目录 → 点文件实时追踪；支持文件名搜索、修改时间筛选、多选批量下载、全屏 |
+| 应用日志 | `/app.html` | 从 `apps` 里选应用，按配置分栏；每栏独立暂停 / 全屏 / 下载，顶部过滤对所有栏生效 |
+| 路径追踪 | `/tail.html` | 输入绝对路径即开即看，先显示类型 / 大小 / 修改时间；最近 8 条自动记住，URL 带 `?host=&path=` 可直接分享 |
+| 全屏 | `/fullscreen.html?host=&file=` | 单文件全屏深色视图 |
 
-| Path | Purpose |
-| --- | --- |
-| `/` | Host log browser |
-| `/app.html` | Application view |
-| `/tail.html` | Arbitrary path view |
-| `/ws` | WebSocket: `init`, `load_prev`, `stop`, `list_dir` |
-| `/api/hosts` | Host list |
-| `/api/apps` | Application list with resolved sources |
-| `/api/stat` | Existence / size / mtime of a remote path |
-| `/api/download` | Stream a whole file |
+公共操作：暂停 / 继续、自动滚动开关、向上翻历史；主机日志页与全屏页还支持 `Ctrl+S` 停止、`Ctrl+L` 清屏。
 
-## Requirements
+### 日志等级着色
 
-- Go 1.21+ to build; the binary itself only needs Linux (or any OS Go targets).
-- Targets must accept password SSH authentication for the configured user.
-- `find`, `tail` and `stat` must exist on the targets (standard on Linux).
+| 等级 | 颜色 | 判定方式 |
+|:--|:--|:--|
+| ERROR / FATAL / PANIC / CRITICAL / SEVERE / ALERT / EMERG | 红，左侧红条 | 等级字段优先；无字段时兜底关键字：失败 / 错误 / 异常 / 崩溃 / 未完成 |
+| WARN / WARNING | 黄，左侧黄条 | 兜底关键字：警告 / 告警 / 超时 |
+| SUCCESS / OK / PASSED / DONE / COMPLETED | 绿，左侧绿条 | 兜底关键字：成功 / 已启动 / 已完成 / 就绪 |
+| INFO / DEBUG / TRACE / NOTICE / 无等级 | 保持白色 | 默认 |
 
-## Layout
+判定顺序：先看行首 120 字符内有没有显式等级字段（`level=error`、`[WARN]`、`ERROR 1234 ---`、`{"level":"info"}`），命中就按等级上色；整行都没有等级字段时，才按关键字兜底。这样 `level=info msg="request success"` 仍然是白色，不会被正文里的 success 误染成绿色。
+
+## HTTP 与 WebSocket 接口
+
+| 路径 | 说明 |
+|:--|:--|
+| `/`、`/index.html` | 主机日志页 |
+| `/app.html` | 应用日志页 |
+| `/tail.html` | 路径追踪页 |
+| `/fullscreen.html` | 全屏页（需 `host`、`file` 参数） |
+| `/ws` | WebSocket，消息类型：`init` / `load_prev` / `stop` / `list_dir` |
+| `/api/hosts` | 主机列表 |
+| `/api/apps` | 应用列表及其解析后的日志源 |
+| `/api/stat` | 远端路径的存在性、大小、修改时间 |
+| `/api/download` | 下载整份文件（受路径白名单约束） |
+| `/api/version` | 当前版本号 |
+
+## 服务管理
+
+```bash
+./start.sh [配置文件]     # nohup 启动，写 logviewer.pid 与 logviewer.log
+./stop.sh                 # 只停本目录启动的实例
+./restart.sh [配置文件]   # 先停再起；停止失败则中止，不会出现“停了没起来”
+```
+
+- `stop.sh` 会用 `/proc/<pid>/cwd` 校验 pid 归属，只在工作目录与脚本目录一致时才动手，避免误停其他目录的同名进程
+- **不要**用 `pgrep -f "logviewer -config"` 停进程，会连累同机其它实例
+- 同一台机器可以跑多个实例，只要端口和工作目录不同
+
+## 环境要求
+
+- 构建：Go 1.21+
+- 运行：Linux（或任意 Go 支持的平台），单个静态二进制，无需额外依赖
+- 目标主机：支持密码 SSH 登录；具备 `tail`、`find`、`stat` 命令（Linux 标准发行版都有）
+
+## 目录结构
 
 ```
-main.go           config parsing, HTTP routes, host/app resolution
-ssh_handler.go    SSH pool, directory listing, tail, stat, download
-websocket.go      WebSocket session: init / load_prev / stop / list_dir
-static/index.html host log browser
-static/app.html   application view (one column per host)
-static/tail.html  arbitrary path view
+main.go            配置解析、HTTP 路由、主机与应用解析
+ssh_handler.go     SSH 连接池、目录列举、tail、stat、下载
+websocket.go       WebSocket 会话：init / load_prev / stop / list_dir
+static/index.html  主机日志页
+static/app.html    应用日志页（按主机分栏）
+static/tail.html   路径追踪页
+static/fullscreen.html  全屏页
 config.example.yaml
-start.sh, stop.sh
+start.sh, stop.sh, restart.sh
 ```
 
-## License
+## 版本
 
-Apache-2.0. See [LICENSE](LICENSE).
+当前版本 **v2.2**，版本号唯一来源是 `main.go` 里的 `var version = "v2.2"`，页面通过 `GET /api/version` 获取。不修改源码也可以注入版本号：
+
+```bash
+go build -ldflags "-s -w -X main.version=v2.2.1" -o logviewer .
+./logviewer -version        # 输出 v2.2
+```
+
+版本沿革：
+
+| 版本 | 内容 |
+|:--|:--|
+| v1 | 主机日志单视图 |
+| v2.0 | 三种视图（主机日志 / 应用分栏 / 任意路径）+ 版本号展示 |
+| v2.1 | 日志等级着色（红 / 黄 / 绿 / 白） |
+| v2.2 | 同一主机可配置多份日志（一行一栏）；新增 `restart.sh` |
+
+## 许可证
+
+Apache-2.0，见 [LICENSE](LICENSE)。

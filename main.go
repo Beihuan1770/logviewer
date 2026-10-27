@@ -20,9 +20,9 @@ import (
 //go:embed static
 var staticFiles embed.FS
 
-// 版本号：源码内定版；构建时可用 -ldflags "-X main.version=v2.1.1" 覆盖
+// 版本号：源码内定版；构建时可用 -ldflags "-X main.version=v2.2.1" 覆盖
 // 四个页面的页脚与 /api/version 都读这一个变量，改版本只动这一行
-var version = "v2.1"
+var version = "v2.2"
 
 // ---------- 配置文件结构（YAML） ----------
 
@@ -42,11 +42,12 @@ type HostSpec struct {
 }
 
 type AppSpec struct {
-	Label string            `yaml:"label"`
-	File  string            `yaml:"file"`
-	Dir   string            `yaml:"dir"`
-	Hosts []string          `yaml:"hosts"`
-	Files map[string]string `yaml:"files"`
+	Label   string            `yaml:"label"`
+	File    string            `yaml:"file"`
+	Dir     string            `yaml:"dir"`
+	Hosts   []string          `yaml:"hosts"`
+	Files   map[string]string `yaml:"files"`
+	Entries [][2]string       `yaml:"-"` // 块写法按书写顺序保留，允许同一主机出现多次
 }
 
 // 允许 `- 应用id: 显示名` 这种单行写法
@@ -272,12 +273,7 @@ func buildConfig(rc *rawConfig) (*Config, error) {
 			return nil, err
 		}
 		for _, a := range dsl {
-			spec := AppSpec{Label: a.Label, Files: map[string]string{}}
-			for _, e := range a.Entries {
-				spec.Hosts = append(spec.Hosts, e[0])
-				spec.Files[e[0]] = e[1]
-			}
-			appSpecs = append(appSpecs, map[string]AppSpec{a.ID: spec})
+			appSpecs = append(appSpecs, map[string]AppSpec{a.ID: {Label: a.Label, Entries: a.Entries}})
 		}
 	case yaml.SequenceNode:
 		if err := rc.Apps.Decode(&appSpecs); err != nil {
@@ -304,40 +300,56 @@ func buildConfig(rc *rawConfig) (*Config, error) {
 				app.Label = id
 			}
 
-			hosts := a.Hosts
-			if len(hosts) == 0 {
-				for _, h := range cfg.Hosts {
-					hosts = append(hosts, h.ID)
+			if len(a.Entries) > 0 {
+				// 块写法：严格按书写顺序成栏，同一主机可以出现多次（如主日志 + error 日志）
+				for _, e := range a.Entries {
+					h, ok := cfg.hostByID[e[0]]
+					if !ok {
+						return nil, fmt.Errorf("应用 %s 引用了未知主机: %s", id, e[0])
+					}
+					app.Sources = append(app.Sources, Source{
+						HostID:    e[0],
+						HostLabel: h.Label,
+						Addr:      h.Addr,
+						Path:      e[1],
+					})
 				}
-			}
+			} else {
+				hosts := a.Hosts
+				if len(hosts) == 0 {
+					for _, h := range cfg.Hosts {
+						hosts = append(hosts, h.ID)
+					}
+				}
 
-			dir := a.Dir
-			if dir == "" {
-				dir = def.Dir
-			}
-			file := a.File
-			if file == "" {
-				file = id + ".log"
-			}
+				dir := a.Dir
+				if dir == "" {
+					dir = def.Dir
+				}
+				file := a.File
+				if file == "" {
+					file = id + ".log"
+				}
 
-			for _, hid := range hosts {
-				h, ok := cfg.hostByID[hid]
-				if !ok {
-					return nil, fmt.Errorf("应用 %s 引用了未知主机: %s", id, hid)
+				for _, hid := range hosts {
+					h, ok := cfg.hostByID[hid]
+					if !ok {
+						return nil, fmt.Errorf("应用 %s 引用了未知主机: %s", id, hid)
+					}
+					p := ""
+					if a.Files != nil {
+						p = a.Files[hid]
+					}
+					if p == "" {
+						p = path.Join(dir, file)
+					}
+					app.Sources = append(app.Sources, Source{
+						HostID:    hid,
+						HostLabel: h.Label,
+						Addr:      h.Addr,
+						Path:      p,
+					})
 				}
-				p := ""
-				if a.Files != nil {
-					p = a.Files[hid]
-				}
-				if p == "" {
-					p = path.Join(dir, file)
-				}
-				app.Sources = append(app.Sources, Source{
-					HostID:    hid,
-					HostLabel: h.Label,
-					Addr:      h.Addr,
-					Path:      p,
-				})
 			}
 			if len(app.Sources) > 0 {
 				cfg.Apps = append(cfg.Apps, app)

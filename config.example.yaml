@@ -24,6 +24,8 @@ hosts:
 #   id [display name][
 #   host-nickname:/absolute/path
 #   ]
+# One line = one column. The same host may appear more than once, e.g. an
+# application log plus its own error log.
 apps: |
   gateway 网关[
   web1:/var/log/app/gateway.log

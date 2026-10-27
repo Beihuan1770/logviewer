@@ -211,11 +211,12 @@ class Pane {
 
   build() {
     const el = document.createElement('section');
+    const fname = (this.src.path || '').split('/').pop();
     el.className = 'pane';
     el.innerHTML = `
       <header>
         <div class="pane-title"><span class="dot" data-dot></span>${esc(this.src.host_label)}
-          <span class="addr">${esc(this.src.addr)}</span></div>
+          <span class="addr">${esc(this.src.addr)} · ${esc(fname)}</span></div>
         <div class="pane-path">${esc(this.src.path)}</div>
         <div class="pane-actions">
           <span class="pstat" data-status>连接中…</span>
