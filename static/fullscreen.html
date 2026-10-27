@@ -55,6 +55,7 @@ input:focus { border-color: #58a6ff; }
     <span id="titleText" style="font-weight:600;">日志追踪</span>
     <span id="statusText" style="color:#8b949e;font-size:12px;">连接中...</span>
     <span id="lineCount" style="color:#8b949e;font-size:12px;">0 行</span>
+    <span id="appVer" style="color:#8b949e;font-size:12px;"></span>
   </div>
   <div class="topbar-right">
     <input id="logSearchInput" type="text" placeholder="搜索..." oninput="reRenderLog()" />
@@ -322,6 +323,13 @@ logBox.addEventListener('scroll', () => {
 });
 
 connect();
+</script>
+<script>
+// 版本号：统一从 /api/version 读（main.go 里的 version 变量），取不到就留空
+fetch('/api/version').then(function (r) { return r.json(); }).then(function (d) {
+  var el = document.getElementById('appVer');
+  if (el) el.textContent = d.version || '';
+}).catch(function () { });
 </script>
 </body>
 </html>

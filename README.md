@@ -25,6 +25,18 @@ between hosts, applications, and arbitrary files from one page.
 - Hosts are declared once and referenced by nickname; app entries list the
   exact `host:path` pairs, so there is no guessing of file names.
 
+## Version
+
+Current release: **v2.0** (git tag `v2.0`). The version string lives in one
+place — `var version = "v2.0"` in `main.go` — and every page shows it next to
+the title, fetched from `GET /api/version`. To stamp a different version without
+editing the source:
+
+```bash
+go build -ldflags "-s -w -X main.version=v2.0.1" -o logviewer .
+./logviewer -version        # prints "v2.0" and exits
+```
+
 ## Quick start
 
 ```bash

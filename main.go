@@ -20,6 +20,10 @@ import (
 //go:embed static
 var staticFiles embed.FS
 
+// 版本号：源码内定版；构建时可用 -ldflags "-X main.version=v2.0.1" 覆盖
+// 四个页面的页脚与 /api/version 都读这一个变量，改版本只动这一行
+var version = "v2.0"
+
 // ---------- 配置文件结构（YAML） ----------
 
 type Defaults struct {
@@ -417,7 +421,13 @@ func loadConfig(p string) (*Config, error) {
 func main() {
 	configPath := flag.String("config", "config.yaml", "配置文件路径（支持 .yaml / 旧版 .json）")
 	checkConfig := flag.Bool("check", false, "只打印解析后的主机与应用清单，不启动服务")
+	showVersion := flag.Bool("version", false, "只打印版本号后退出")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println(version)
+		return
+	}
 
 	cfg, err := loadConfig(*configPath)
 	if err != nil {
@@ -464,6 +474,12 @@ func main() {
 			infos = append(infos, hostInfo{ID: h.ID, Name: h.Label, Host: h.Addr, LogDir: h.Dir})
 		}
 		json.NewEncoder(w).Encode(infos)
+	})
+
+	// 版本号：四个页面统一从这里取，避免 HTML 里硬编码
+	mux.HandleFunc("/api/version", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		json.NewEncoder(w).Encode(map[string]string{"version": version})
 	})
 
 	mux.HandleFunc("/api/apps", func(w http.ResponseWriter, r *http.Request) {
@@ -524,6 +540,6 @@ func main() {
 	})
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
-	log.Printf("=== 日志追踪系统已启动: http://0.0.0.0%s ===", addr)
+	log.Printf("=== 日志追踪系统 %s 已启动: http://0.0.0.0%s ===", version, addr)
 	log.Fatal(http.ListenAndServe(addr, mux))
 }

@@ -167,7 +167,7 @@ tr.directory:hover td { background: #eff6ff; }
 <body>
 
 <div class="topbar">
-  <div><span class="title">日志追踪系统</span></div>
+  <div><span class="title">日志追踪系统</span><span id="appVer" style="font-size:12px;color:#94a3b8;margin-left:8px;"></span></div>
   <nav class="tabs">
     <a href="/index.html" class="active">主机日志</a>
     <a href="/app.html">应用日志</a>
@@ -819,6 +819,13 @@ logBox.addEventListener('scroll', () => {
 
 // ============ 初始化 ============
 loadHosts(); connect();
+</script>
+<script>
+// 版本号：统一从 /api/version 读（main.go 里的 version 变量），取不到就留空
+fetch('/api/version').then(function (r) { return r.json(); }).then(function (d) {
+  var el = document.getElementById('appVer');
+  if (el) el.textContent = d.version || '';
+}).catch(function () { });
 </script>
 </body>
 </html>
