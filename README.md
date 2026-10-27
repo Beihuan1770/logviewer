@@ -87,7 +87,7 @@ GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o logviewer .
 ./stop.sh && mv -f logviewer.new logviewer && chmod +x logviewer && ./start.sh
 ```
 
-构建时也可以直接注入版本号：`-ldflags "-s -w -X main.version=v2.2.1"`。
+构建时也可以直接注入版本号：`-ldflags "-s -w -X main.version=v2.3.1"`。
 
 ## 配置文件
 
@@ -240,11 +240,11 @@ start.sh, stop.sh, restart.sh
 
 ## 版本
 
-当前版本 **v2.2**，版本号唯一来源是 `main.go` 里的 `var version = "v2.2"`，页面通过 `GET /api/version` 获取。不修改源码也可以注入版本号：
+当前版本 **v2.3**，版本号唯一来源是 `main.go` 里的 `var version = "v2.3"`，页面通过 `GET /api/version` 获取。不修改源码也可以注入版本号：
 
 ```bash
-go build -ldflags "-s -w -X main.version=v2.2.1" -o logviewer .
-./logviewer -version        # 输出 v2.2
+go build -ldflags "-s -w -X main.version=v2.3.1" -o logviewer .
+./logviewer -version        # 输出 v2.3
 ```
 
 版本沿革：
@@ -255,6 +255,7 @@ go build -ldflags "-s -w -X main.version=v2.2.1" -o logviewer .
 | v2.0 | 三种视图（主机日志 / 应用分栏 / 任意路径）+ 版本号展示 |
 | v2.1 | 日志等级着色（红 / 黄 / 绿 / 白） |
 | v2.2 | 同一主机可配置多份日志（一行一栏）；新增 `restart.sh` |
+| v2.3 | 修复停止追踪后「全屏追踪」按钮被置灰、点击无效的问题 |
 
 ## 许可证
 

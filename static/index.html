@@ -677,7 +677,8 @@ function stopTail() {
   currentTailId++;
   updateConnStatus('online', '已停止');
   btnStop.disabled = true;
-  btnFullscreen.disabled = true;
+  // 停止只是停掉当前页的实时追踪；全屏是新开窗口、自带连接，保持可用
+  btnFullscreen.disabled = false;
   btnResume.style.display = 'inline-block';
 }
 
