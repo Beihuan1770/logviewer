@@ -186,6 +186,9 @@ function handleMessage(msg) {
     case 'new_line':
       appendLine(msg.data);
       break;
+    case 'new_lines':
+      for (const line of (msg.data || [])) appendLine(line);
+      break;
     case 'prev_lines':
       isLoadingHistory = false;
       const pData = msg.data;

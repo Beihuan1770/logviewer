@@ -43,6 +43,27 @@ func NewSSHPool(hosts []*Host) *SSHPool {
 	}
 }
 
+// dialClient 新建一条独立的 SSH 连接（不复用连接池）
+// 实时追踪单独用一条连接，停止时直接关闭连接即可释放全部通道
+func (p *SSHPool) dialClient(hostID string) (*ssh.Client, error) {
+	cfg, ok := p.hosts[hostID]
+	if !ok {
+		return nil, fmt.Errorf("未知主机: %s", hostID)
+	}
+	sshCfg := &ssh.ClientConfig{
+		User:            cfg.User,
+		Auth:            []ssh.AuthMethod{ssh.Password(cfg.Pass)},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         10 * time.Second,
+	}
+	addr := net.JoinHostPort(cfg.Addr, strconv.Itoa(cfg.Port))
+	client, err := ssh.Dial("tcp", addr, sshCfg)
+	if err != nil {
+		return nil, fmt.Errorf("SSH连接 %s(%s) 失败: %w", cfg.Label, cfg.Addr, err)
+	}
+	return client, nil
+}
+
 func (p *SSHPool) getClient(hostID string) (*ssh.Client, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -60,17 +81,9 @@ func (p *SSHPool) getClient(hostID string) (*ssh.Client, error) {
 		return nil, fmt.Errorf("未知主机: %s", hostID)
 	}
 
-	sshCfg := &ssh.ClientConfig{
-		User:            cfg.User,
-		Auth:            []ssh.AuthMethod{ssh.Password(cfg.Pass)},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-		Timeout:         10 * time.Second,
-	}
-
-	addr := net.JoinHostPort(cfg.Addr, strconv.Itoa(cfg.Port))
-	client, err := ssh.Dial("tcp", addr, sshCfg)
+	client, err := p.dialClient(hostID)
 	if err != nil {
-		return nil, fmt.Errorf("SSH连接 %s(%s) 失败: %w", cfg.Label, cfg.Addr, err)
+		return nil, err
 	}
 
 	go func() {
@@ -95,14 +108,30 @@ func (p *SSHPool) getClient(hostID string) (*ssh.Client, error) {
 	return client, nil
 }
 
+// newSession 打开一个 SSH 会话。sshd 对单连接并发会话数有上限，
+// 快速切换日志时可能瞬时超限（administratively prohibited），这里做几次短重试
+func (p *SSHPool) newSession(hostID string) (*ssh.Session, error) {
+	var lastErr error
+	for attempt := 0; attempt < 4; attempt++ {
+		client, err := p.getClient(hostID)
+		if err != nil {
+			return nil, err
+		}
+		session, err := client.NewSession()
+		if err == nil {
+			return session, nil
+		}
+		lastErr = err
+		log.Printf("SSH 会话创建失败（%s 第%d次）: %v", hostID, attempt+1, err)
+		time.Sleep(time.Duration(120*(attempt+1)) * time.Millisecond)
+	}
+	return nil, fmt.Errorf("创建SSH会话失败: %w", lastErr)
+}
+
 func (p *SSHPool) runCmd(hostID, cmd string) (string, error) {
-	client, err := p.getClient(hostID)
+	session, err := p.newSession(hostID)
 	if err != nil {
 		return "", err
-	}
-	session, err := client.NewSession()
-	if err != nil {
-		return "", fmt.Errorf("创建SSH会话失败: %w", err)
 	}
 	defer session.Close()
 
@@ -216,34 +245,36 @@ func (p *SSHPool) ListDir(hostID, relPath string) ([]DirEntry, error) {
 
 // TailFile 实时追踪日志文件
 func (p *SSHPool) TailFile(ctx context.Context, hostID, filePath string, lineCh chan<- string) error {
-	client, err := p.getClient(hostID)
+	// 实时追踪用一条独立 SSH 连接：停止时直接关闭连接，
+	// 由 SSH 库回收全部通道，不依赖远端 tail 进程是否退出
+	client, err := p.dialClient(hostID)
 	if err != nil {
 		return err
 	}
+	defer client.Close()
 
 	session, err := client.NewSession()
 	if err != nil {
 		return fmt.Errorf("创建SSH会话失败: %w", err)
 	}
+	defer session.Close()
 
 	stdout, err := session.StdoutPipe()
 	if err != nil {
-		session.Close()
 		return err
 	}
 
 	escaped := "'" + strings.ReplaceAll(filePath, "'", "'\\''") + "'"
-	// 初始内容由 ReadLastNLines 提供，这里从文件末尾开始跟，避免重复推送已有行
+	// 初始内容由 ReadLastNLinesWithOffset 提供，这里从文件末尾开始跟，避免重复推送已有行
 	cmd := fmt.Sprintf("tail -n 0 -F %s 2>&1", escaped)
 
 	if err := session.Start(cmd); err != nil {
-		session.Close()
 		return fmt.Errorf("启动 tail 失败: %w", err)
 	}
 
 	go func() {
 		<-ctx.Done()
-		session.Close()
+		client.Close()
 	}()
 
 	scanner := bufio.NewScanner(stdout)
@@ -271,14 +302,99 @@ func (p *SSHPool) ReadLastNLines(hostID, filePath string, n int) ([]string, erro
 	return splitLines(out), nil
 }
 
-// ReadLinesSkip 跳过 skip 行后往前读 count 行
-func (p *SSHPool) ReadLinesSkip(hostID, filePath string, skip int, count int) ([]string, error) {
+// ReadLastNLinesWithOffset 读取文件末尾 n 行，并返回这些行的起始字节偏移
+// 返回的偏移用于后续按字节窗口向前翻页，避免每翻一页都重扫整个文件
+func (p *SSHPool) ReadLastNLinesWithOffset(hostID, filePath string, n int) ([]string, int64, error) {
 	escaped := "'" + strings.ReplaceAll(filePath, "'", "'\\''") + "'"
-	out, err := p.runCmd(hostID, fmt.Sprintf("tail -n %d %s 2>/dev/null | head -n %d", skip+count, escaped, count))
+	// 分隔标记不能含 #（shell 注释符），且要足够独特，避免与日志内容混淆
+	const sep = "__LOGVIEWER_SIZE__"
+	cmd := fmt.Sprintf("stat -c %%s %s 2>/dev/null || echo 0; echo %s; tail -n %d %s 2>/dev/null",
+		escaped, sep, n, escaped)
+	out, err := p.runCmd(hostID, cmd)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	return splitLines(out), nil
+	idx := strings.Index(out, sep)
+	if idx < 0 {
+		return nil, 0, fmt.Errorf("解析 tail 输出失败")
+	}
+	size, _ := strconv.ParseInt(strings.TrimSpace(out[:idx]), 10, 64)
+	tailText := strings.TrimPrefix(out[idx+len(sep):], "\n")
+	start := size - int64(len(tailText))
+	if start < 0 {
+		start = 0
+	}
+	return splitLines(tailText), start, nil
+}
+
+// readByteRange 读取文件 [start, end) 字节区间
+func (p *SSHPool) readByteRange(hostID, filePath string, start, end int64) (string, error) {
+	if end <= start {
+		return "", nil
+	}
+	escaped := "'" + strings.ReplaceAll(filePath, "'", "'\\''") + "'"
+	return p.runCmd(hostID, fmt.Sprintf("tail -c +%d %s 2>/dev/null | head -c %d", start+1, escaped, end-start))
+}
+
+// ReadLinesBefore 从 endOffset 往前读取最多 count 行完整日志。
+// 返回读取到的行、最早一行的起始偏移、以及是否还有更早内容。
+// 每次只读一个固定大小的字节窗口（不够再翻倍），不再重扫整个文件。
+func (p *SSHPool) ReadLinesBefore(hostID, filePath string, endOffset int64, count int) ([]string, int64, bool, error) {
+	if endOffset <= 0 || count <= 0 {
+		return []string{}, 0, false, nil
+	}
+	win := int64(64 * 1024)
+	const maxWin = 16 << 20
+	for {
+		start := endOffset - win
+		if start < 0 {
+			start = 0
+		}
+		text, err := p.readByteRange(hostID, filePath, start, endOffset)
+		if err != nil {
+			return nil, 0, false, err
+		}
+		base := start
+		body := text
+		if start > 0 {
+			// 窗口开头是不完整行，丢掉它，从下一个换行之后开始
+			if i := strings.IndexByte(body, '\n'); i >= 0 {
+				body = body[i+1:]
+				base = start + int64(i) + 1
+			} else {
+				body = ""
+			}
+		}
+		var parts []string
+		if body != "" {
+			body = strings.TrimSuffix(body, "\n")
+			if body != "" {
+				parts = strings.Split(body, "\n")
+			}
+		}
+		if len(parts) < count && start > 0 && win < maxWin {
+			win *= 2
+			continue
+		}
+		if len(parts) == 0 {
+			newEnd := base
+			if start == 0 {
+				newEnd = 0
+			}
+			return []string{}, newEnd, newEnd > 0, nil
+		}
+		from := 0
+		if len(parts) > count {
+			from = len(parts) - count
+		}
+		offset := base
+		starts := make([]int64, len(parts))
+		for i, line := range parts {
+			starts[i] = offset
+			offset += int64(len(line)) + 1
+		}
+		return parts[from:], starts[from], starts[from] > 0, nil
+	}
 }
 
 func splitLines(s string) []string {
@@ -302,14 +418,9 @@ func (p *SSHPool) ReadFile(hostID, filePath string, tailBytes int64) (string, er
 
 // StreamFile 将远程文件内容流式写入 writer（用于 HTTP 下载）
 func (p *SSHPool) StreamFile(hostID, filePath string, w io.Writer) error {
-	client, err := p.getClient(hostID)
+	session, err := p.newSession(hostID)
 	if err != nil {
 		return err
-	}
-
-	session, err := client.NewSession()
-	if err != nil {
-		return fmt.Errorf("创建SSH会话失败: %w", err)
 	}
 	defer session.Close()
 

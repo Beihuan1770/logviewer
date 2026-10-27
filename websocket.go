@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -50,6 +51,12 @@ func (h *WSHub) HandleWS(w http.ResponseWriter, r *http.Request) {
 		mu           sync.Mutex
 		tailID       int64
 		activeTailID int64
+		// 向上翻页用字节偏移定位，避免每次重扫整个文件
+		readEnd   int64
+		readLines int
+		readPath  string
+		// 上一条 tail 何时真正结束，用于开新会话前等待，避免超过 sshd 并发会话上限
+		tailDone chan struct{}
 	)
 
 	writeJSON := func(v interface{}) error {
@@ -118,19 +125,28 @@ func (h *WSHub) HandleWS(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			stopTail()
+			// 等上一条 tail 会话真正关闭再开新会话，否则快速切换日志时会撞上 sshd 的并发会话上限
+			if tailDone != nil {
+				select {
+				case <-tailDone:
+				case <-time.After(2 * time.Second):
+				}
+			}
 
-			lines, err := h.pool.ReadLastNLines(msg.Host, msg.File, h.cfg.TailLines)
+			lines, start, err := h.pool.ReadLastNLinesWithOffset(msg.Host, msg.File, h.cfg.TailLines)
 			if err != nil {
 				writeJSON(map[string]interface{}{"type": "error", "message": "读取初始化行失败: " + err.Error()})
 				continue
 			}
+			readEnd, readLines, readPath = start, len(lines), msg.File
 
 			writeJSON(map[string]interface{}{
 				"type": "init_response",
 				"data": map[string]interface{}{
 					"lines":       lines,
 					"total_lines": len(lines),
-					"has_more":    len(lines) >= h.cfg.TailLines,
+					"has_more":    start > 0,
+					"end_offset":  start,
 				},
 			})
 
@@ -144,7 +160,11 @@ func (h *WSHub) HandleWS(w http.ResponseWriter, r *http.Request) {
 
 			lineCh := make(chan string, 200)
 
+			done := make(chan struct{})
+			tailDone = done
+
 			go func() {
+				defer close(done)
 				defer close(lineCh)
 				if err := h.pool.TailFile(ctx, msg.Host, msg.File, lineCh); err != nil {
 					if ctx.Err() == nil {
@@ -154,14 +174,36 @@ func (h *WSHub) HandleWS(w http.ResponseWriter, r *http.Request) {
 			}()
 
 			go func() {
-				for line := range lineCh {
-					if err := writeJSON(map[string]interface{}{"type": "new_line", "data": line}); err != nil {
-						cancel()
+				// 100ms 一批推送，避免高频日志一行一条 JSON 造成消息风暴
+				ticker := time.NewTicker(100 * time.Millisecond)
+				defer ticker.Stop()
+				batch := make([]string, 0, 256)
+				flush := func() {
+					if len(batch) == 0 {
 						return
 					}
+					if err := writeJSON(map[string]interface{}{"type": "new_lines", "data": batch}); err != nil {
+						cancel()
+					}
+					batch = batch[:0]
 				}
-				if atomic.LoadInt64(&activeTailID) == id {
-					writeJSON(map[string]interface{}{"type": "status", "status": "stopped", "tailId": id})
+				for {
+					select {
+					case line, ok := <-lineCh:
+						if !ok {
+							flush()
+							if atomic.LoadInt64(&activeTailID) == id {
+								writeJSON(map[string]interface{}{"type": "status", "status": "stopped", "tailId": id})
+							}
+							return
+						}
+						batch = append(batch, line)
+						if len(batch) >= 500 {
+							flush()
+						}
+					case <-ticker.C:
+						flush()
+					}
 				}
 			}()
 
@@ -170,35 +212,42 @@ func (h *WSHub) HandleWS(w http.ResponseWriter, r *http.Request) {
 			})
 
 		case "load_prev":
-			skipLines := 0
 			limit := 200
-			if msg.Params != nil {
-				skipLines = msg.Params.SkipLines
-				if msg.Params.Limit > 0 {
-					limit = msg.Params.Limit
-				}
-			}
-			if skipLines <= 0 {
-				writeJSON(map[string]interface{}{
-					"type": "prev_lines",
-					"data": map[string]interface{}{"lines": []string{}, "total_lines": skipLines, "has_more": false},
-				})
-				continue
+			if msg.Params != nil && msg.Params.Limit > 0 {
+				limit = msg.Params.Limit
 			}
 			if !h.cfg.IsAllowed(msg.Host, msg.File) {
 				writeJSON(map[string]interface{}{"type": "error", "message": "路径不在允许范围内"})
 				continue
 			}
+			// 换了文件（或重连后）就重新定位到文件末尾
+			if msg.File != readPath {
+				lines, start, err := h.pool.ReadLastNLinesWithOffset(msg.Host, msg.File, h.cfg.TailLines)
+				if err != nil {
+					writeJSON(map[string]interface{}{"type": "error", "message": "读取初始化行失败: " + err.Error()})
+					continue
+				}
+				readEnd, readLines, readPath = start, len(lines), msg.File
+			}
+			if readEnd <= 0 {
+				writeJSON(map[string]interface{}{
+					"type": "prev_lines",
+					"data": map[string]interface{}{"lines": []string{}, "total_lines": readLines, "has_more": false},
+				})
+				continue
+			}
 
-			lines, err := h.pool.ReadLinesSkip(msg.Host, msg.File, skipLines, limit)
+			lines, newEnd, more, err := h.pool.ReadLinesBefore(msg.Host, msg.File, readEnd, limit)
 			if err != nil {
 				writeJSON(map[string]interface{}{"type": "error", "message": "加载历史失败: " + err.Error()})
 				continue
 			}
+			readEnd = newEnd
+			readLines += len(lines)
 			writeJSON(map[string]interface{}{
 				"type": "prev_lines",
 				"data": map[string]interface{}{
-					"lines": lines, "total_lines": skipLines + len(lines), "has_more": len(lines) >= limit,
+					"lines": lines, "total_lines": readLines, "has_more": more, "end_offset": newEnd,
 				},
 			})
 

@@ -20,9 +20,9 @@ import (
 //go:embed static
 var staticFiles embed.FS
 
-// 版本号：源码内定版；构建时可用 -ldflags "-X main.version=v1.0.1" 覆盖
+// 版本号：源码内定版；构建时可用 -ldflags "-X main.version=v1.1.1" 覆盖
 // 页面页脚与 /api/version 都读这一个变量，改版本只动这一行
-var version = "v1.0"
+var version = "v1.1"
 
 // ---------- 配置文件结构（YAML） ----------
 
