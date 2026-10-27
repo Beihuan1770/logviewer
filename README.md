@@ -19,7 +19,10 @@ between hosts, applications, and arbitrary files from one page.
   - *Path* — paste any absolute path and tail it immediately (recent paths are
     remembered in the browser).
 - Live tail with pause / resume, per-pane download, and a full-screen view.
-- Content filter with highlighted matches; `ERROR` / `WARN` lines get colour.
+- Content filter with highlighted matches; log lines are coloured by level —
+  errors red, warnings amber, successes green, everything else plain white.
+  An explicit level field (`level=error`, `[WARN]`, `ERROR 1234 ---`) wins over
+  keyword matching, so words like "success" inside an INFO message stay white.
 - Scroll to the top to page in older lines without losing your position.
 - Single static binary: the front-end is embedded with `go:embed`.
 - Hosts are declared once and referenced by nickname; app entries list the
@@ -27,14 +30,14 @@ between hosts, applications, and arbitrary files from one page.
 
 ## Version
 
-Current release: **v2.0** (git tag `v2.0`). The version string lives in one
-place — `var version = "v2.0"` in `main.go` — and every page shows it next to
+Current release: **v2.1** (git tag `v2.1`). The version string lives in one
+place — `var version = "v2.1"` in `main.go` — and every page shows it next to
 the title, fetched from `GET /api/version`. To stamp a different version without
 editing the source:
 
 ```bash
-go build -ldflags "-s -w -X main.version=v2.0.1" -o logviewer .
-./logviewer -version        # prints "v2.0" and exits
+go build -ldflags "-s -w -X main.version=v2.1.1" -o logviewer .
+./logviewer -version        # prints "v2.1" and exits
 ```
 
 ## Quick start

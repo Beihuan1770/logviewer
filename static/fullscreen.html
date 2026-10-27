@@ -38,8 +38,9 @@ input:focus { border-color: #58a6ff; }
 .log-line { padding: 1px 16px; white-space: pre-wrap; word-break: break-all; border-bottom: 1px solid rgba(255,255,255,0.015); }
 .log-line:nth-child(odd) { background: rgba(255,255,255,0.008); }
 .log-line .hl { background: rgba(210,153,29,0.5); padding: 0 1px; border-radius: 2px; color: #fff; }
-.log-line.level-error { color: #f85149; background: rgba(248,81,73,0.06); }
-.log-line.level-warn { color: #d2991d; }
+.log-line.level-error { color: #ff7b72; background: rgba(248,81,73,0.10); border-left: 2px solid #f85149; }
+.log-line.level-warn { color: #e3b341; background: rgba(210,153,29,0.10); border-left: 2px solid #d2991d; }
+.log-line.level-success { color: #56d364; background: rgba(63,185,80,0.10); border-left: 2px solid #3fb950; }
 
 #backToBottom {
   position: absolute; bottom: 12px; right: 18px; z-index: 5;
@@ -215,11 +216,41 @@ function handleMessage(msg) {
   }
 }
 
+// ============ 日志等级着色 ============
+// 划分：错误=红，警告=黄，成功=绿，普通（INFO/DEBUG/无等级）=白
+// 先认行首的显式等级字段（level=error / [WARN] / "ERROR 1234 ---" 等），
+// 没有等级字段再按整行关键字兜底，避免把正文里的 success/error 当成等级。
+const LEVEL_CLASS = {
+  error: 'level-error', err: 'level-error', fatal: 'level-error', panic: 'level-error',
+  critical: 'level-error', crit: 'level-error', severe: 'level-error', emerg: 'level-error', alert: 'level-error',
+  warn: 'level-warn', warning: 'level-warn',
+  success: 'level-success', ok: 'level-success', pass: 'level-success', passed: 'level-success',
+  done: 'level-success', completed: 'level-success',
+  info: '', notice: '', debug: '', trace: '', verbose: ''
+};
+
+function levelClass(line) {
+  const head = line.slice(0, 120);
+  let lv = '';
+  const kv = head.match(/(?:level|severity|lvl)"?\s*[=:]\s*"?([a-zA-Z]+)/);
+  if (kv) lv = kv[1].toLowerCase();
+  if (!lv) {
+    const tok = head.match(/(?:^|[\s\[|(])(TRACE|DEBUG|VERBOSE|INFO|NOTICE|SUCCESS|OK|WARN|WARNING|ERROR|ERR|FATAL|PANIC|CRITICAL|SEVERE|ALERT|EMERG)(?=[\s\]|):,;-]|$)/i);
+    if (tok) lv = tok[1].toLowerCase();
+  }
+  if (lv && LEVEL_CLASS[lv] !== undefined) return LEVEL_CLASS[lv];
+
+  if (/\b(?:error|fatal|panic|critical|exception|failed|failure|refused)\b/i.test(line) || /失败|错误|异常|崩溃|未完成/.test(line)) return 'level-error';
+  if (/\b(?:warn|warning)\b/i.test(line) || /警告|告警|超时/.test(line)) return 'level-warn';
+  if (/\b(?:success|succeeded|successful|completed|passed|ok|okay)\b/i.test(line) || /成功|已启动|已完成|就绪/.test(line)) return 'level-success';
+  return '';
+}
+
 function createLogElement(line) {
   const div = document.createElement('div');
   div.className = 'log-line';
-  if (/\b(error|fatal|exception|panic|fail)\b/i.test(line)) div.classList.add('level-error');
-  else if (/\b(warn|warning)\b/i.test(line)) div.classList.add('level-warn');
+  const lvCls = levelClass(line);
+  if (lvCls) div.classList.add(lvCls);
   if (logFilterText) {
     const esc = logFilterText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     div.innerHTML = line.replace(new RegExp('(' + esc + ')', 'gi'), '<span class="hl">$1</span>');
