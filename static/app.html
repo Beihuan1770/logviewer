@@ -93,6 +93,8 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: "Microsof
 .logbox::-webkit-scrollbar { width: 7px; }
 .logbox::-webkit-scrollbar-thumb { background: #30363d; border-radius: 4px; }
 .log-line { padding: 1px 10px; white-space: pre-wrap; word-break: break-all; border-bottom: 1px solid rgba(255,255,255,.015); }
+/* 虚拟滚动的上下占位：只负责撑出滚动条高度 */
+.vs-pad { width: 100%; pointer-events: none; }
 .log-line:nth-child(odd) { background: rgba(255,255,255,.008); }
 .log-line .hl { background: rgba(210,153,29,.5); padding: 0 1px; border-radius: 2px; color: #fff; }
 .log-line.level-error { color: #ff7b72; background: rgba(248,81,73,.10); border-left: 2px solid #f85149; }
@@ -141,6 +143,8 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: "Microsof
   <div class="placeholder">正在加载应用列表…</div>
 </div>
 
+<script src="/ansi.js"></script>
+<script src="/vscroll.js"></script>
 <script>
 const MAX_LINES = 20000;
 
@@ -177,7 +181,9 @@ const LEVEL_CLASS = {
 };
 
 function lineClass(line) {
-  const head = line.slice(0, 120);
+  // 先剥掉 ANSI 转义，避免彩色日志行首的转义码干扰等级识别
+  const plain = line.indexOf('\x1b') === -1 ? line : Ansi.strip(line);
+  const head = plain.slice(0, 120);
   let lv = '';
   const kv = head.match(/(?:level|severity|lvl)"?\s*[=:]\s*"?([a-zA-Z]+)/);
   if (kv) lv = kv[1].toLowerCase();
@@ -187,9 +193,9 @@ function lineClass(line) {
   }
   if (lv && LEVEL_CLASS[lv] !== undefined) return LEVEL_CLASS[lv];
 
-  if (/\b(?:error|fatal|panic|critical|exception|failed|failure|refused)\b/i.test(line) || /失败|错误|异常|崩溃|未完成/.test(line)) return 'level-error';
-  if (/\b(?:warn|warning)\b/i.test(line) || /警告|告警|超时/.test(line)) return 'level-warn';
-  if (/\b(?:success|succeeded|successful|completed|passed|ok|okay)\b/i.test(line) || /成功|已启动|已完成|就绪/.test(line)) return 'level-success';
+  if (/\b(?:error|fatal|panic|critical|exception|failed|failure|refused)\b/i.test(plain) || /失败|错误|异常|崩溃|未完成/.test(plain)) return 'level-error';
+  if (/\b(?:warn|warning)\b/i.test(plain) || /警告|告警|超时/.test(plain)) return 'level-warn';
+  if (/\b(?:success|succeeded|successful|completed|passed|ok|okay)\b/i.test(plain) || /成功|已启动|已完成|就绪/.test(plain)) return 'level-success';
   return '';
 }
 
@@ -201,13 +207,9 @@ function levelKind(line) {
   return 'info';
 }
 
+// 一行日志 → HTML：等级着色 + ANSI 彩色转义 + 关键字高亮（日志内容一律转义，防注入）
 function lineHtml(line, filter) {
-  let html = esc(line);
-  if (filter) {
-    const escRe = filter.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    html = html.replace(new RegExp('(' + escRe + ')', 'gi'), '<span class="hl">$1</span>');
-  }
-  return '<div class="log-line ' + lineClass(line) + '">' + html + '</div>';
+  return '<div class="log-line ' + lineClass(line) + '">' + Ansi.render(line, filter || '') + '</div>';
 }
 
 class Pane {
@@ -215,7 +217,7 @@ class Pane {
     this.app = app;
     this.src = src;
     this.index = index;
-    this.lines = [];
+    this.vs = null;
     this.stopped = false;
     this.ws = null;
     this.retry = 1000;
@@ -256,6 +258,16 @@ class Pane {
     this.countEl = el.querySelector('[data-count]');
     this.hintEl = el.querySelector('[data-hint]');
 
+    // 每个面板独立的虚拟滚动容器
+    this.vs = new VScroll(this.logBox, {
+      buildHtml: function (arr) { return arr.map(function (l) { return lineHtml(l, filterText); }).join(''); },
+      emptyHtml: '<div class="empty">暂无内容</div>',
+      match: (l) => this.match(l),
+      maxLines: MAX_LINES,
+      onNearTop: () => this.loadPrev()
+    });
+    this.vs.autoScroll = autoScroll;
+
     el.querySelector('[data-act="stop"]').onclick = () => this.stop();
     el.querySelector('[data-act="resume"]').onclick = () => this.resume();
     el.querySelector('[data-act="download"]').onclick = () => {
@@ -266,10 +278,9 @@ class Pane {
     };
 
     this.logBox.addEventListener('scroll', () => {
-      if (this.progScroll) return;
+      if (this.progScroll || this.vs.busy) return;
       const box = this.logBox;
       if (box.scrollHeight - box.scrollTop - box.clientHeight > 30 && autoScroll) setAuto(false);
-      if (box.scrollTop < 40) this.loadPrev();
     });
     this.logBox.addEventListener('wheel', (e) => {
       if (e.deltaY < 0 && autoScroll) setAuto(false);
@@ -316,20 +327,16 @@ class Pane {
   handle(msg) {
     switch (msg.type) {
       case 'init_response':
-        this.lines = [];
         this.pending = [];
         clearTimeout(this.flushTimer);
         this.flushTimer = null;
         this.totalLoaded = msg.data.total_lines;
         this.hasMore = !!msg.data.has_more;
         this.loadingPrev = false;
-        this.logBox.innerHTML = '';
-        (msg.data.lines || []).forEach(l => {
-          this.lines.push(l);
-        });
-        this.renderAll();
+        this.vs.autoScroll = autoScroll;
+        this.vs.emptyHtml = '<div class="empty">暂无内容</div>';
+        this.vs.setLines(msg.data.lines || []);
         this.updateCount();
-        this.scrollBottom();
         break;
       case 'prev_lines': {
         this.loadingPrev = false;
@@ -338,22 +345,7 @@ class Pane {
         this.hasMore = !!d.has_more;
         const newLines = d.lines || [];
         if (!newLines.length) break;
-        const beforeH = this.logBox.scrollHeight;
-        const beforeTop = this.logBox.scrollTop;
-        const frag = document.createDocumentFragment();
-        for (const l of newLines) {
-          if (this.match(l)) frag.appendChild(this.makeNode(l));
-        }
-        this.lines = newLines.concat(this.lines);
-        if (this.lines.length > MAX_LINES) this.lines.length = MAX_LINES;
-        if (frag.childNodes.length) this.logBox.insertBefore(frag, this.logBox.firstChild);
-        while (this.logBox.childElementCount > 6000) {
-          this.logBox.removeChild(this.logBox.lastElementChild);
-        }
-        this.progScroll = true;
-        this.logBox.scrollTop = beforeTop + (this.logBox.scrollHeight - beforeH);
-        clearTimeout(this.progTimer);
-        this.progTimer = setTimeout(() => { this.progScroll = false; }, 150);
+        this.vs.prepend(newLines);
         this.updateCount();
         break;
       }
@@ -375,7 +367,7 @@ class Pane {
       case 'error':
         this.setStatus(msg.message || '出错了', 'offline');
         this.hintEl.textContent = msg.message || '';
-        if (!this.lines.length) {
+        if (!this.vs.all.length) {
           this.logBox.innerHTML = '<div class="empty">' + esc(msg.message || '无法读取日志') + '</div>';
         }
         break;
@@ -383,28 +375,14 @@ class Pane {
   }
 
   pushLine(line) {
-    this.lines.push(line);
-    if (this.lines.length > MAX_LINES) this.lines.shift();
     this.pending.push(line);
     this.scheduleFlush();
     this.updateCount();
   }
 
   match(line) {
-    if (filterText && line.toLowerCase().indexOf(filterText) === -1) return false;
+    if (filterText && Ansi.strip(line).toLowerCase().indexOf(filterText) === -1) return false;
     return !!levelFilter[levelKind(line)];
-  }
-
-  makeNode(line) {
-    const div = document.createElement('div');
-    div.className = 'log-line ' + lineClass(line);
-    if (filterText) {
-      const escRe = filterText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      div.innerHTML = esc(line).replace(new RegExp('(' + escRe + ')', 'gi'), '<span class="hl">$1</span>');
-    } else {
-      div.textContent = line;
-    }
-    return div;
   }
 
   scheduleFlush() {
@@ -415,36 +393,23 @@ class Pane {
   flush() {
     this.flushTimer = null;
     if (!this.pending.length) return;
-    const frag = document.createDocumentFragment();
-    for (const l of this.pending) {
-      if (this.match(l)) frag.appendChild(this.makeNode(l));
-    }
+    const batch = this.pending;
     this.pending = [];
-    if (frag.childNodes.length) this.logBox.appendChild(frag);
-    while (this.logBox.childElementCount > 6000) {
-      this.logBox.removeChild(this.logBox.firstElementChild);
-    }
-    if (autoScroll) this.scrollBottom();
+    this.vs.autoScroll = autoScroll;
+    this.vs.append(batch);
+    this.updateCount();
   }
 
   renderAll() {
-    if (filterText) {
-      let html = '';
-      for (const l of this.lines) if (this.match(l)) html += lineHtml(l, filterText);
-      this.logBox.innerHTML = html || '<div class="empty">无匹配内容</div>';
-    } else {
-      let html = '';
-      for (const l of this.lines) html += lineHtml(l, '');
-      this.logBox.innerHTML = html;
-    }
-    this.scrollBottom();
+    this.vs.emptyHtml = filterText ? '<div class="empty">无匹配内容</div>' : '<div class="empty">暂无内容</div>';
+    this.vs.autoScroll = autoScroll;
+    this.vs.refilter();
+    this.updateCount();
   }
 
   scrollBottom() {
-    this.progScroll = true;
-    this.logBox.scrollTop = this.logBox.scrollHeight;
-    clearTimeout(this.progTimer);
-    this.progTimer = setTimeout(() => { this.progScroll = false; }, 150);
+    this.vs.autoScroll = autoScroll;
+    this.vs.scrollToBottom();
   }
 
   loadPrev() {
@@ -459,7 +424,7 @@ class Pane {
   }
 
   updateCount() {
-    this.countEl.textContent = this.lines.length.toLocaleString() + ' 行';
+    this.countEl.textContent = (this.vs.all.length + this.pending.length).toLocaleString() + ' 行';
   }
 
   stop() {
@@ -487,6 +452,7 @@ class Pane {
 function setAuto(on) {
   autoScroll = on;
   autoText.textContent = '自动滚动: ' + (on ? '开' : '关');
+  panes.forEach(p => { if (p.vs) p.vs.autoScroll = on; });
   if (on) panes.forEach(p => p.scrollBottom());
 }
 btnAuto.onclick = () => setAuto(!autoScroll);

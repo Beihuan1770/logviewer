@@ -61,6 +61,8 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: "Microsof
 .logbox::-webkit-scrollbar { width: 7px; }
 .logbox::-webkit-scrollbar-thumb { background: #30363d; border-radius: 4px; }
 .log-line { padding: 1px 12px; white-space: pre-wrap; word-break: break-all; border-bottom: 1px solid rgba(255,255,255,.015); }
+/* 虚拟滚动的上下占位：只负责撑出滚动条高度 */
+.vs-pad { width: 100%; pointer-events: none; }
 .log-line:nth-child(odd) { background: rgba(255,255,255,.008); }
 .log-line .hl { background: rgba(210,153,29,.5); padding: 0 1px; border-radius: 2px; color: #fff; }
 .log-line.level-error { color: #ff7b72; background: rgba(248,81,73,.10); border-left: 2px solid #f85149; }
@@ -114,6 +116,8 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: "Microsof
   </section>
 </div>
 
+<script src="/ansi.js"></script>
+<script src="/vscroll.js"></script>
 <script>
 const MAX_LINES = 20000;
 const STORE_KEY = 'logviewer.recentPaths';
@@ -143,7 +147,6 @@ const statusText = document.getElementById('statusText');
 
 let hosts = [];
 let current = { host: '', path: '' };
-let lines = [];
 let pending = [];
 let flushTimer = null;
 let ws = null;
@@ -151,8 +154,6 @@ let retry = 1000;
 let stopped = true;
 let autoScroll = true;
 let filterText = '';
-let progScroll = false;
-let progTimer = null;
 let totalLoaded = null;
 let hasMore = false;
 let loadingPrev = false;
@@ -171,7 +172,9 @@ const LEVEL_CLASS = {
 };
 
 function lineClass(line) {
-  const head = line.slice(0, 120);
+  // 先剥掉 ANSI 转义，避免彩色日志行首的转义码干扰等级识别
+  const plain = line.indexOf('\x1b') === -1 ? line : Ansi.strip(line);
+  const head = plain.slice(0, 120);
   let lv = '';
   const kv = head.match(/(?:level|severity|lvl)"?\s*[=:]\s*"?([a-zA-Z]+)/);
   if (kv) lv = kv[1].toLowerCase();
@@ -181,31 +184,38 @@ function lineClass(line) {
   }
   if (lv && LEVEL_CLASS[lv] !== undefined) return LEVEL_CLASS[lv];
 
-  if (/\b(?:error|fatal|panic|critical|exception|failed|failure|refused)\b/i.test(line) || /失败|错误|异常|崩溃|未完成/.test(line)) return 'level-error';
-  if (/\b(?:warn|warning)\b/i.test(line) || /警告|告警|超时/.test(line)) return 'level-warn';
-  if (/\b(?:success|succeeded|successful|completed|passed|ok|okay)\b/i.test(line) || /成功|已启动|已完成|就绪/.test(line)) return 'level-success';
+  if (/\b(?:error|fatal|panic|critical|exception|failed|failure|refused)\b/i.test(plain) || /失败|错误|异常|崩溃|未完成/.test(plain)) return 'level-error';
+  if (/\b(?:warn|warning)\b/i.test(plain) || /警告|告警|超时/.test(plain)) return 'level-warn';
+  if (/\b(?:success|successful|succeeded|completed|passed|ok|okay)\b/i.test(plain) || /成功|已启动|已完成|就绪/.test(plain)) return 'level-success';
   return '';
 }
-function match(line) { return !filterText || line.toLowerCase().indexOf(filterText) !== -1; }
-function makeNode(line) {
-  const div = document.createElement('div');
-  div.className = 'log-line ' + lineClass(line);
-  if (filterText) {
-    const re = filterText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    div.innerHTML = esc(line).replace(new RegExp('(' + re + ')', 'gi'), '<span class="hl">$1</span>');
-  } else {
-    div.textContent = line;
-  }
-  return div;
+function match(line) { return !filterText || Ansi.strip(line).toLowerCase().indexOf(filterText) !== -1; }
+
+// 一行日志 → HTML：等级着色 + ANSI 彩色转义 + 关键字高亮
+function lineHtml(line) {
+  return '<div class="log-line ' + lineClass(line) + '">' + Ansi.render(line, filterText) + '</div>';
 }
+
+// 虚拟滚动：数据全量留内存，DOM 只渲染可视窗口
+const vs = new VScroll(logBox, {
+  buildHtml: function (arr) {
+    let html = '';
+    for (let i = 0; i < arr.length; i++) html += lineHtml(arr[i]);
+    return html;
+  },
+  emptyHtml: '<div class="empty">暂无内容</div>',
+  match: match,
+  maxLines: MAX_LINES,
+  onNearTop: function () { loadPrev(); }
+});
+
 function scrollBottom() {
-  progScroll = true;
-  logBox.scrollTop = logBox.scrollHeight;
-  clearTimeout(progTimer);
-  progTimer = setTimeout(() => { progScroll = false; }, 150);
+  vs.autoScroll = autoScroll;
+  vs.scrollToBottom();
 }
 function setAuto(on) {
   autoScroll = on;
+  vs.autoScroll = on;
   autoText.textContent = '自动滚动: ' + (on ? '开' : '关');
   if (on) scrollBottom();
 }
@@ -217,11 +227,9 @@ function setStatus(text, cls) {
   paneDot.className = 'dot ' + (cls || '');
 }
 
-function updateCount() { lineCount.textContent = lines.length.toLocaleString() + ' 行'; }
+function updateCount() { lineCount.textContent = (vs.all.length + pending.length).toLocaleString() + ' 行'; }
 
 function pushLine(line) {
-  lines.push(line);
-  if (lines.length > MAX_LINES) lines.shift();
   pending.push(line);
   scheduleFlush();
   updateCount();
@@ -234,26 +242,18 @@ function scheduleFlush() {
 function flush() {
   flushTimer = null;
   if (!pending.length) return;
-  const frag = document.createDocumentFragment();
-  for (const l of pending) if (match(l)) frag.appendChild(makeNode(l));
+  const batch = pending;
   pending = [];
-  const placeholder = logBox.querySelector('.empty');
-  if (placeholder) placeholder.remove();
-  if (frag.childNodes.length) logBox.appendChild(frag);
-  while (logBox.childElementCount > 6000) logBox.removeChild(logBox.firstElementChild);
-  if (autoScroll) scrollBottom();
+  vs.autoScroll = autoScroll;
+  vs.append(batch);
+  updateCount();
 }
 
 function renderAll() {
-  logBox.innerHTML = '';
-  const frag = document.createDocumentFragment();
-  for (const l of lines) if (match(l)) frag.appendChild(makeNode(l));
-  if (!frag.childNodes.length) {
-    logBox.innerHTML = '<div class="empty">暂无内容</div>';
-  } else {
-    logBox.appendChild(frag);
-  }
-  if (autoScroll) scrollBottom();
+  vs.emptyHtml = '<div class="empty">暂无内容</div>';
+  vs.autoScroll = autoScroll;
+  vs.refilter();
+  updateCount();
 }
 
 function connect() {
@@ -285,15 +285,15 @@ function send(obj) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.st
 function handle(msg) {
   switch (msg.type) {
     case 'init_response':
-      lines = []; pending = [];
+      pending = [];
       clearTimeout(flushTimer); flushTimer = null;
       totalLoaded = msg.data.total_lines;
       hasMore = !!msg.data.has_more;
       loadingPrev = false;
-      (msg.data.lines || []).forEach(l => lines.push(l));
-      renderAll();
+      vs.autoScroll = autoScroll;
+      vs.emptyHtml = '<div class="empty">暂无内容</div>';
+      vs.setLines(msg.data.lines || []);
       updateCount();
-      scrollBottom();
       break;
     case 'new_line':
       pushLine(msg.data);
@@ -308,17 +308,7 @@ function handle(msg) {
       hasMore = !!d.has_more;
       const nl = d.lines || [];
       if (!nl.length) break;
-      const beforeH = logBox.scrollHeight;
-      const beforeTop = logBox.scrollTop;
-      const frag = document.createDocumentFragment();
-      for (const l of nl) if (match(l)) frag.appendChild(makeNode(l));
-      lines = nl.concat(lines);
-      if (lines.length > MAX_LINES) lines.length = MAX_LINES;
-      if (frag.childNodes.length) logBox.insertBefore(frag, logBox.firstChild);
-      progScroll = true;
-      logBox.scrollTop = beforeTop + (logBox.scrollHeight - beforeH);
-      clearTimeout(progTimer);
-      progTimer = setTimeout(() => { progScroll = false; }, 150);
+      vs.prepend(nl);
       updateCount();
       break;
     }
@@ -329,7 +319,7 @@ function handle(msg) {
     case 'error':
       setStatus(msg.message || '出错了', 'offline');
       hint.textContent = msg.message || '';
-      if (!lines.length) logBox.innerHTML = '<div class="empty">' + esc(msg.message || '无法读取') + '</div>';
+      if (!vs.all.length) logBox.innerHTML = '<div class="empty">' + esc(msg.message || '无法读取') + '</div>';
       break;
   }
 }
@@ -341,9 +331,8 @@ function loadPrev() {
 }
 
 logBox.addEventListener('scroll', () => {
-  if (progScroll) return;
+  if (vs.busy) return;
   if (logBox.scrollHeight - logBox.scrollTop - logBox.clientHeight > 30 && autoScroll) setAuto(false);
-  if (logBox.scrollTop < 40) loadPrev();
 });
 logBox.addEventListener('wheel', (e) => { if (e.deltaY < 0 && autoScroll) setAuto(false); }, { passive: true });
 
@@ -373,7 +362,9 @@ async function openPath() {
   setStatus('连接中…', '');
   fileMeta.textContent = '';
   logBox.innerHTML = '<div class="empty">读取中…</div>';
-  lines = []; updateCount();
+  vs.emptyHtml = '<div class="empty">读取中…</div>';
+  vs.setLines([]);
+  updateCount();
   history.replaceState(null, '', '?host=' + encodeURIComponent(host) + '&path=' + encodeURIComponent(p));
   remember(host, p);
   renderRecent();
