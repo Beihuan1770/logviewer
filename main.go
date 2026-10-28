@@ -20,9 +20,9 @@ import (
 //go:embed static
 var staticFiles embed.FS
 
-// 版本号：源码内定版；构建时可用 -ldflags "-X main.version=v1.1.1" 覆盖
-// 页面页脚与 /api/version 都读这一个变量，改版本只动这一行
-var version = "v1.1"
+// 版本号：源码内定版；构建时可用 -ldflags "-X main.version=v2.6.1" 覆盖
+// 四个页面的页脚与 /api/version 都读这一个变量，改版本只动这一行
+var version = "v1.2"
 
 // ---------- 配置文件结构（YAML） ----------
 
@@ -66,23 +66,25 @@ func (a *AppSpec) UnmarshalYAML(v *yaml.Node) error {
 }
 
 type rawConfig struct {
-	Port         int                   `yaml:"port"`
-	TailLines    int                   `yaml:"tail_lines"`
-	AllowAnyPath bool                  `yaml:"allow_any_path"`
-	PathRoots    []string              `yaml:"path_roots"`
-	Defaults     Defaults              `yaml:"defaults"`
-	Hosts        []map[string]HostSpec `yaml:"hosts"`
-	Apps         yaml.Node             `yaml:"apps"`
+	Port         int      `yaml:"port"`
+	TailLines    int      `yaml:"tail_lines"`
+	AllowAnyPath bool     `yaml:"allow_any_path"`
+	PathRoots    []string `yaml:"path_roots"`
+	// 标签页在后台多久后自动停止追踪（分钟）；nil 用默认 30，<=0 表示关闭该功能
+	IdlePause *int                  `yaml:"idle_pause_minutes"`
+	Defaults  Defaults              `yaml:"defaults"`
+	Hosts     []map[string]HostSpec `yaml:"hosts"`
+	Apps      yaml.Node             `yaml:"apps"`
 }
 
 // apps 支持两种写法：
-//  1) 块写法（推荐，与运维手写习惯一致）：
+//  1. 块写法（推荐，与运维手写习惯一致）：
 //     apps: |
 //     flightcontrol[
 //     drone1:/data/projects/drone_logs/flightcontrol.log
 //     drone2:/data/projects/drone_logs/flightcontrol.log
 //     ]
-//  2) 旧版 YAML 列表（- flightcontrol: 飞控），保留兼容
+//  2. 旧版 YAML 列表（- flightcontrol: 飞控），保留兼容
 type dslApp struct {
 	ID      string
 	Label   string
@@ -161,14 +163,15 @@ type App struct {
 }
 
 type Config struct {
-	Port         int
-	TailLines    int
-	AllowAnyPath bool
-	PathRoots    []string
-	Hosts        []*Host
-	Apps         []*App
-	hostByID     map[string]*Host
-	allowed      map[string][]string
+	Port             int
+	TailLines        int
+	IdlePauseMinutes int
+	AllowAnyPath     bool
+	PathRoots        []string
+	Hosts            []*Host
+	Apps             []*App
+	hostByID         map[string]*Host
+	allowed          map[string][]string
 }
 
 // IsAllowed 判断某主机上的路径是否允许读取：
@@ -211,6 +214,14 @@ func buildConfig(rc *rawConfig) (*Config, error) {
 	}
 	if cfg.TailLines <= 0 {
 		cfg.TailLines = 1000
+	}
+	// 后台自动暂停：默认 30 分钟；配成 <=0 表示关闭
+	cfg.IdlePauseMinutes = 30
+	if rc.IdlePause != nil {
+		cfg.IdlePauseMinutes = *rc.IdlePause
+		if cfg.IdlePauseMinutes < 0 {
+			cfg.IdlePauseMinutes = 0
+		}
 	}
 
 	def := rc.Defaults
@@ -492,6 +503,12 @@ func main() {
 	mux.HandleFunc("/api/version", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		json.NewEncoder(w).Encode(map[string]string{"version": version})
+	})
+
+	// 前端从这里取「后台自动暂停」的分钟数
+	mux.HandleFunc("/api/settings", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		json.NewEncoder(w).Encode(map[string]int{"idle_pause_minutes": cfg.IdlePauseMinutes})
 	})
 
 	mux.HandleFunc("/api/apps", func(w http.ResponseWriter, r *http.Request) {

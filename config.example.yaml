@@ -4,6 +4,10 @@
 port: 13344
 tail_lines: 200            # 首次打开加载的行数，也是向上翻页的起点
 
+# 标签页在后台超过这么多分钟就自动停止追踪（释放 SSH），切回前台自动恢复。
+# 0 表示关闭这个行为。
+idle_pause_minutes: 30
+
 defaults:
   user: root
   port: 22

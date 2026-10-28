@@ -8,10 +8,10 @@
 
 ## 和主线的区别
 
-| 项 | 主线 v2.x | 本精简版 v1.1 |
+| 项 | 主线 v2.x | 本精简版 v1.2 |
 |:--|:--|:--|
 | 页面 | 主机日志 / 应用日志 / 路径追踪（顶部三个 Tab） | **只有主机日志**（无 Tab） |
-| 配置项 | `hosts` + `apps` + `allow_any_path` + `path_roots` | `port` + `tail_lines` + `defaults` + `hosts` |
+| 配置项 | `hosts` + `apps` + `allow_any_path` + `path_roots` | `port` + `tail_lines` + `idle_pause_minutes` + `defaults` + `hosts` |
 | 默认端口 | 23344 | **13344** |
 | 日志等级着色、翻页、过滤、下载、全屏 | 有 | 有（同一套前端逻辑） |
 
@@ -23,6 +23,8 @@
 - 向上翻历史：滚动到顶部自动加载更早 200 行，视线位置不跳
 - 内容搜索并高亮命中
 - 日志等级着色：错误红、警告黄、成功绿、其余白
+- 等级过滤：错误 / 警告 / 信息 三个开关
+- 后台自动暂停：标签页在后台超过 `idle_pause_minutes`（默认 30）分钟自动停止追踪、释放 SSH，切回前台自动恢复
 - 单文件下载、多选批量下载
 - 路径白名单：只允许读取 `hosts[*].dir` 下的路径
 
@@ -66,6 +68,7 @@ GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o logviewer .
 |:--|:--|:--|
 | `port` | 监听端口 | 示例写 `13344`，代码内兜底 `23344` |
 | `tail_lines` | 首次打开加载的行数，也是向上翻页的起点 | 代码内 `1000`，示例写 `200` |
+| `idle_pause_minutes` | 标签页在后台超过该分钟数后自动停止追踪，切回前台自动恢复；`0` 关闭 | `30` |
 | `defaults.user` | 主机未显式填写时的 SSH 用户 | `root` |
 | `defaults.port` | 主机未显式填写时的 SSH 端口 | `22` |
 | `defaults.dir` | 主机日志页的默认根目录 | 代码内 `/data/projects/drone_logs`，建议显式配置 |
@@ -123,7 +126,7 @@ hosts:
 
 ## 版本
 
-当前版本 **v1.1**，来源是 `main.go` 的 `var version = "v1.1"`，页面从 `GET /api/version` 获取。
+当前版本 **v1.2**，来源是 `main.go` 的 `var version = "v1.2"`，页面从 `GET /api/version` 获取。
 
 版本沿革：
 
@@ -131,6 +134,7 @@ hosts:
 |:--|:--|
 | v1.0 | 从主线切分的首版：只有主机日志，端口 13344 |
 | v1.1 | 同步主线 v2.4 的修复：按字节窗口翻页、WebSocket 批量推送、批量渲染、每条 tail 独立 SSH 连接（快速切换日志不再耗尽会话） |
+| v1.2 | 同步主线 v2.5 / v2.6：等级过滤（错误 / 警告 / 信息）、标签页后台超时自动暂停 |
 
 ## 许可证
 
