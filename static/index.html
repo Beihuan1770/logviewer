@@ -145,6 +145,8 @@ tr.directory:hover td { background: #eff6ff; }
 .log-box::-webkit-scrollbar-thumb { background: #30363d; border-radius: 4px; }
 
 .log-line { padding: 1px 12px; white-space: pre-wrap; word-break: break-all; border-bottom: 1px solid rgba(255,255,255,0.015); }
+/* 虚拟滚动的上下占位：只负责撑出滚动条高度 */
+.vs-pad { width: 100%; pointer-events: none; }
 .log-line:nth-child(odd) { background: rgba(255,255,255,0.008); }
 .log-line .hl { background: rgba(210,153,29,0.5); padding: 0 1px; border-radius: 2px; color: #fff; }
 .log-line.level-error { color: #ff7b72; background: rgba(248,81,73,0.10); border-left: 2px solid #f85149; }
@@ -262,10 +264,12 @@ tr.directory:hover td { background: #eff6ff; }
   </div>
 </div>
 
+<script src="/ansi.js"></script>
+<script src="/vscroll.js"></script>
 <script>
 let ws = null, reconnectTimer = null, reconnectDelay = 1000;
 let connected = false, selectedHost = null, selectedFile = null;
-let logLines = [], logFilterText = '';
+let logFilterText = '';
 let pendingLines = [], flushTimer = null;
 let levelFilter = { error: true, warn: true, info: true };
 let currentItems = [], visibleItems = [];
@@ -303,6 +307,23 @@ const downloadSelectedBtn = document.getElementById('downloadSelectedBtn');
 const selectAllChk = document.getElementById('selectAllChk');
 const startTimeInput = document.getElementById('startTimeInput');
 const endTimeInput = document.getElementById('endTimeInput');
+
+// ============ 虚拟滚动容器 ============
+// 数据全量留内存，DOM 只渲染可视窗口，长日志挂机也不会卡
+const DEFAULT_EMPTY = '<div class="empty-state"><div class="icon">&#128226;</div><div>选择日志文件开始实时查看</div></div>';
+const FILTER_EMPTY = '<div class="empty-state"><div class="icon">&#128269;</div><div>当前过滤条件下没有内容</div></div>';
+
+const vs = new VScroll(logBox, {
+  buildHtml: function (arr) {
+    let html = '';
+    for (let i = 0; i < arr.length; i++) html += lineHtml(arr[i]);
+    return html;
+  },
+  emptyHtml: DEFAULT_EMPTY,
+  match: passLine,
+  maxLines: MAX_LINES,
+  onNearTop: function () { loadPrevLines(); }
+});
 
 // ============ WebSocket ============
 function connect() {
@@ -349,17 +370,11 @@ function handleMessage(msg) {
       totalLinesLoaded = msg.data.total_lines;
       hasMoreHistory = msg.data.has_more;
       dropPending();
-      logLines = [];
-      logBox.innerHTML = '';
-      const initLines = msg.data.lines || [];
-      const frag = document.createDocumentFragment();
-      for (const line of initLines) {
-        logLines.push(line);
-        if (!passLine(line)) continue;
-        frag.appendChild(createLogElement(line));
-      }
-      logBox.appendChild(frag);
-      if (isAutoScroll) logBox.scrollTop = logBox.scrollHeight;
+      isAutoScroll = true;
+      vs.autoScroll = true;
+      btnScroll.textContent = '自动: 开';
+      backToBottomBtn.classList.remove('show');
+      vs.setLines(msg.data.lines || []);
       updateLineCount();
       break;
     case 'new_line':
@@ -374,7 +389,8 @@ function handleMessage(msg) {
       totalLinesLoaded = pData.total_lines;
       hasMoreHistory = pData.has_more;
       if (!pData.lines || !pData.lines.length) break;
-      prependHistory(pData.lines);
+      vs.prepend(pData.lines);
+      updateLineCount();
       break;
     case 'status':
       if (msg.status === 'tailing') {
@@ -433,8 +449,9 @@ function selectHost(host) {
   selectedHost = host; selectedFile = null;
   currentPath = '';
   totalLinesLoaded = null; isLoadingHistory = false;
-  logBox.innerHTML = '<div class="empty-state"><div class="icon">&#128226;</div><div>选择日志文件开始实时查看</div></div>';
-  logLines = []; updateLineCount();
+  vs.emptyHtml = DEFAULT_EMPTY;
+  vs.setLines([]);
+  updateLineCount();
   previewTitle.textContent = '日志预览';
   btnDownload.disabled = true;
   btnStop.disabled = true;
@@ -650,7 +667,9 @@ function startLogInit() {
   btnStop.disabled = false;
   btnFullscreen.disabled = false;
   btnResume.style.display = 'none';
-  logBox.innerHTML = ''; logLines = [];
+  vs.emptyHtml = DEFAULT_EMPTY;
+  vs.setLines([]);
+  updateLineCount();
   send({ type: 'init', host: selectedHost, file: selectedFile });
 }
 
@@ -742,7 +761,9 @@ const LEVEL_CLASS = {
 };
 
 function levelClass(line) {
-  const head = line.slice(0, 120);
+  // 先剥掉 ANSI 转义，避免彩色日志行首的转义码干扰等级识别
+  const plain = line.indexOf('\x1b') === -1 ? line : Ansi.strip(line);
+  const head = plain.slice(0, 120);
   let lv = '';
   const kv = head.match(/(?:level|severity|lvl)"?\s*[=:]\s*"?([a-zA-Z]+)/);
   if (kv) lv = kv[1].toLowerCase();
@@ -752,32 +773,21 @@ function levelClass(line) {
   }
   if (lv && LEVEL_CLASS[lv] !== undefined) return LEVEL_CLASS[lv];
 
-  if (/\b(?:error|fatal|panic|critical|exception|failed|failure|refused)\b/i.test(line) || /失败|错误|异常|崩溃|未完成/.test(line)) return 'level-error';
-  if (/\b(?:warn|warning)\b/i.test(line) || /警告|告警|超时/.test(line)) return 'level-warn';
-  if (/\b(?:success|succeeded|successful|completed|passed|ok|okay)\b/i.test(line) || /成功|已启动|已完成|就绪/.test(line)) return 'level-success';
+  if (/\b(?:error|fatal|panic|critical|exception|failed|failure|refused)\b/i.test(plain) || /失败|错误|异常|崩溃|未完成/.test(plain)) return 'level-error';
+  if (/\b(?:warn|warning)\b/i.test(plain) || /警告|告警|超时/.test(plain)) return 'level-warn';
+  if (/\b(?:success|succeeded|successful|completed|passed|ok|okay)\b/i.test(plain) || /成功|已启动|已完成|就绪/.test(plain)) return 'level-success';
   return '';
 }
 
-function createLogElement(line) {
-  const div = document.createElement('div');
-  div.className = 'log-line';
-  const lvCls = levelClass(line);
-  if (lvCls) div.classList.add(lvCls);
-  if (logFilterText) {
-    const esc = logFilterText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    div.innerHTML = line.replace(new RegExp('(' + esc + ')', 'gi'), '<span class="hl">$1</span>');
-  } else {
-    div.textContent = line;
-  }
-  return div;
+// 一行日志 → HTML：等级着色 + ANSI 彩色转义 + 关键字高亮（日志内容一律转义，防注入）
+function lineHtml(line) {
+  const cls = levelClass(line);
+  return '<div class="log-line' + (cls ? ' ' + cls : '') + '">' + Ansi.render(line, logFilterText) + '</div>';
 }
 
 function appendLine(line) {
-  logLines.push(line);
-  if (logLines.length > MAX_LINES) logLines.shift();
   pendingLines.push(line);
   scheduleFlush();
-  updateLineCount();
 }
 
 // 等级归类：错误 / 警告 / 其余都算信息
@@ -790,7 +800,7 @@ function levelKind(line) {
 
 // 文本过滤 + 等级过滤，两处渲染共用
 function passLine(line) {
-  if (logFilterText && !line.toLowerCase().includes(logFilterText)) return false;
+  if (logFilterText && !Ansi.strip(line).toLowerCase().includes(logFilterText)) return false;
   return !!levelFilter[levelKind(line)];
 }
 
@@ -799,54 +809,21 @@ function scheduleFlush() {
   flushTimer = setTimeout(flushLines, 120);
 }
 
-// 批量渲染：120ms 汇总一次，并限制 DOM 节点数，避免高频日志卡死渲染进程
+// 批量渲染：120ms 汇总一次，交给虚拟滚动只渲染窗口内的行
 function flushLines() {
   flushTimer = null;
   if (!pendingLines.length) return;
-  const fragment = document.createDocumentFragment();
-  for (const line of pendingLines) {
-    if (!passLine(line)) continue;
-    fragment.appendChild(createLogElement(line));
-  }
+  const batch = pendingLines;
   pendingLines = [];
-  const placeholder = logBox.querySelector('.empty-state');
-  if (fragment.childNodes.length) {
-    if (placeholder) placeholder.remove();
-    logBox.appendChild(fragment);
-  }
-  while (logBox.childElementCount > 6000) logBox.removeChild(logBox.firstElementChild);
-  if (isAutoScroll) logBox.scrollTop = logBox.scrollHeight;
+  vs.autoScroll = isAutoScroll;
+  vs.append(batch);
+  updateLineCount();
 }
 
 function dropPending() {
   pendingLines = [];
   clearTimeout(flushTimer);
   flushTimer = null;
-}
-
-function prependHistory(lines) {
-  const currentScrollTop = logBox.scrollTop;
-  const currentHeight = logBox.scrollHeight;
-
-  for (let i = lines.length - 1; i >= 0; i--) {
-    logLines.unshift(lines[i]);
-  }
-  while (logLines.length > MAX_LINES) logLines.pop();
-
-  if (logFilterText) {
-    reRenderLog();
-    return;
-  }
-
-  const fragment = document.createDocumentFragment();
-  for (let i = 0; i < lines.length; i++) {
-    fragment.appendChild(createLogElement(lines[i]));
-  }
-  logBox.prepend(fragment);
-
-  const newHeight = logBox.scrollHeight;
-  logBox.scrollTop = currentScrollTop + (newHeight - currentHeight);
-  updateLineCount();
 }
 
 function loadPrevLines() {
@@ -856,8 +833,9 @@ function loadPrevLines() {
 }
 
 function backToBottom() {
-  logBox.scrollTop = logBox.scrollHeight;
   isAutoScroll = true;
+  vs.autoScroll = true;
+  vs.scrollToBottom();
   btnScroll.textContent = '自动: 开';
   backToBottomBtn.classList.remove('show');
 }
@@ -865,31 +843,27 @@ function backToBottom() {
 function reRenderLog() {
   logFilterText = logSearchInput.value.toLowerCase();
   dropPending();
-  logBox.innerHTML = '';
-  for (const line of logLines) {
-    if (!passLine(line)) continue;
-    const div = createLogElement(line);
-    logBox.appendChild(div);
-  }
-  if (!logBox.childElementCount) {
-    const empty = document.createElement('div');
-    empty.className = 'empty-state';
-    empty.textContent = '当前过滤条件下没有内容';
-    logBox.appendChild(empty);
-  }
-  if (isAutoScroll) logBox.scrollTop = logBox.scrollHeight;
+  const filtered = logFilterText || !(levelFilter.error && levelFilter.warn && levelFilter.info);
+  vs.emptyHtml = filtered ? FILTER_EMPTY : DEFAULT_EMPTY;
+  vs.refilter();
   updateLineCount();
 }
 
-function updateLineCount() { lineCountEl.textContent = logLines.length.toLocaleString() + ' 行'; }
+function updateLineCount() { lineCountEl.textContent = vs.all.length.toLocaleString() + ' 行'; }
 
 function toggleScroll() {
   isAutoScroll = !isAutoScroll;
+  vs.autoScroll = isAutoScroll;
   btnScroll.textContent = '自动: ' + (isAutoScroll ? '开' : '关');
-  if (isAutoScroll) { logBox.scrollTop = logBox.scrollHeight; backToBottomBtn.classList.remove('show'); }
+  if (isAutoScroll) { vs.scrollToBottom(); backToBottomBtn.classList.remove('show'); }
 }
 
-function clearLog() { dropPending(); logBox.innerHTML = ''; logLines = []; updateLineCount(); }
+function clearLog() {
+  dropPending();
+  vs.emptyHtml = DEFAULT_EMPTY;
+  vs.setLines([]);
+  updateLineCount();
+}
 
 document.addEventListener('keydown', (e) => {
   if (e.ctrlKey && e.key === 's') { e.preventDefault(); stopTail(); }
@@ -897,22 +871,23 @@ document.addEventListener('keydown', (e) => {
 });
 
 logBox.addEventListener('scroll', () => {
+  // 虚拟滚动正在改窗口/占位时不参与自动滚动判定，避免误判
+  if (vs.busy) return;
   const distToBottom = logBox.scrollHeight - logBox.scrollTop - logBox.clientHeight;
   if (distToBottom <= 10) {
     isAutoScroll = true;
+    vs.autoScroll = true;
     btnScroll.textContent = '自动: 开';
     backToBottomBtn.classList.remove('show');
   } else {
     isAutoScroll = false;
+    vs.autoScroll = false;
     btnScroll.textContent = '自动: 关';
     backToBottomBtn.classList.add('show');
   }
-  if (logBox.scrollTop <= 50 && !isLoadingHistory && hasMoreHistory && selectedFile && selectedHost) {
-    loadPrevLines();
-  }
 });
 
-// ============ 等级过滤 / 后台自动暂停 ============
+// ============ 等级过滤 ============
 document.querySelectorAll('.level-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     const lv = btn.dataset.level;
@@ -922,6 +897,7 @@ document.querySelectorAll('.level-btn').forEach(btn => {
   });
 });
 
+// ============ 后台自动暂停 ============
 let idlePauseMinutes = 30;
 let idleTimer = null;
 let pausedByIdle = false;
