@@ -57,6 +57,12 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: "Microsof
 .btn-download:hover { background: #0d6b63; }
 .btn-sm { padding: 4px 9px; font-size: 12px; border-radius: 7px; }
 
+.level-filters { display: flex; gap: 4px; }
+.level-btn { border: 1px solid #d8e2f0; background: #fff; color: #64748b; font-size: 11px; padding: 4px 9px; border-radius: 7px; cursor: pointer; }
+.level-btn.active { background: #eef4ff; border-color: #2b8cff; color: #1d4ed8; font-weight: 600; }
+.level-btn[data-level="error"].active { background: #fef2f2; border-color: #f87171; color: #b91c1c; }
+.level-btn[data-level="warn"].active { background: #fffbeb; border-color: #fbbf24; color: #b45309; }
+
 .panes {
   height: calc(100vh - var(--topbar-h) - var(--toolbar-h));
   display: grid; grid-auto-flow: column; grid-auto-columns: minmax(420px, 1fr);
@@ -122,6 +128,11 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: "Microsof
   <button class="btn btn-primary btn-sm" id="btnReload">重新连接</button>
   <span class="meta" id="appMeta"></span>
   <span class="spacer"></span>
+  <div class="level-filters" id="levelFilters">
+    <button class="level-btn active" data-level="error">错误</button>
+    <button class="level-btn active" data-level="warn">警告</button>
+    <button class="level-btn active" data-level="info">信息</button>
+  </div>
   <input id="filterInput" type="text" placeholder="全部面板过滤（日志内容）..." />
   <button class="btn btn-light btn-sm" id="btnAuto"><span id="autoText">自动滚动: 开</span></button>
 </div>
@@ -147,6 +158,7 @@ let apps = [];
 let panes = [];
 let autoScroll = true;
 let filterText = '';
+let levelFilter = { error: true, warn: true, info: true };
 
 function esc(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -179,6 +191,14 @@ function lineClass(line) {
   if (/\b(?:warn|warning)\b/i.test(line) || /警告|告警|超时/.test(line)) return 'level-warn';
   if (/\b(?:success|succeeded|successful|completed|passed|ok|okay)\b/i.test(line) || /成功|已启动|已完成|就绪/.test(line)) return 'level-success';
   return '';
+}
+
+// 等级归类：错误 / 警告 / 其余都算信息
+function levelKind(line) {
+  const c = lineClass(line);
+  if (c === 'level-error') return 'error';
+  if (c === 'level-warn') return 'warn';
+  return 'info';
 }
 
 function lineHtml(line, filter) {
@@ -371,7 +391,8 @@ class Pane {
   }
 
   match(line) {
-    return !filterText || line.toLowerCase().indexOf(filterText) !== -1;
+    if (filterText && line.toLowerCase().indexOf(filterText) === -1) return false;
+    return !!levelFilter[levelKind(line)];
   }
 
   makeNode(line) {
@@ -470,6 +491,15 @@ function setAuto(on) {
 }
 btnAuto.onclick = () => setAuto(!autoScroll);
 
+document.querySelectorAll('.level-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const lv = btn.dataset.level;
+    levelFilter[lv] = !levelFilter[lv];
+    btn.classList.toggle('active', levelFilter[lv]);
+    panes.forEach(p => { p.renderAll(); p.updateCount(); });
+  });
+});
+
 function renderApp(app) {
   panes.forEach(p => p.close());
   panes = [];
@@ -531,6 +561,39 @@ async function boot() {
   statusDot.className = 'conn-dot online';
   statusText.textContent = '已就绪';
 }
+
+// ============ 后台自动暂停 ============
+let idlePauseMinutes = 30;
+let idleTimer = null;
+let pausedByIdle = false;
+
+fetch('/api/settings').then(r => r.json()).then(d => {
+  if (d && typeof d.idle_pause_minutes === 'number') idlePauseMinutes = d.idle_pause_minutes;
+}).catch(() => {});
+
+function scheduleIdlePause() {
+  clearTimeout(idleTimer);
+  if (!idlePauseMinutes || idlePauseMinutes <= 0) return;
+  idleTimer = setTimeout(() => {
+    if (document.visibilityState !== 'hidden') return;
+    if (!panes.length || !panes.some(p => !p.stopped)) return;
+    pausedByIdle = true;
+    panes.forEach(p => p.stop());
+    statusText.textContent = '已暂停（后台 ' + idlePauseMinutes + ' 分钟）';
+  }, idlePauseMinutes * 60 * 1000);
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') {
+    scheduleIdlePause();
+  } else {
+    clearTimeout(idleTimer);
+    if (pausedByIdle) {
+      pausedByIdle = false;
+      panes.forEach(p => p.resume());
+    }
+  }
+});
 
 boot();
 </script>

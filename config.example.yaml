@@ -4,6 +4,10 @@
 port: 23344
 tail_lines: 200            # lines loaded on first open (and the tail start point)
 
+# 标签页在后台超过这么多分钟就自动停止追踪（释放 SSH），切回前台自动恢复。
+# 0 表示关闭这个行为。
+idle_pause_minutes: 30
+
 # The "Path" tab may open any absolute path when true.
 # Set to false and list path_roots to restrict it.
 allow_any_path: true

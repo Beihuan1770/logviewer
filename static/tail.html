@@ -474,6 +474,44 @@ async function boot() {
   statusText.textContent = '已就绪';
 }
 
+// ============ 后台自动暂停 ============
+let idlePauseMinutes = 30;
+let idleTimer = null;
+let pausedByIdle = false;
+
+fetch('/api/settings').then(r => r.json()).then(d => {
+  if (d && typeof d.idle_pause_minutes === 'number') idlePauseMinutes = d.idle_pause_minutes;
+}).catch(() => {});
+
+function scheduleIdlePause() {
+  clearTimeout(idleTimer);
+  if (!idlePauseMinutes || idlePauseMinutes <= 0) return;
+  idleTimer = setTimeout(() => {
+    if (document.visibilityState !== 'hidden') return;
+    if (stopped || !current.host || !current.path) return;
+    pausedByIdle = true;
+    stopped = true;
+    send({ type: 'stop' });
+    setStatus('已暂停（后台 ' + idlePauseMinutes + ' 分钟）', '');
+    btnStop.style.display = 'none';
+    btnResume.style.display = '';
+  }, idlePauseMinutes * 60 * 1000);
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') {
+    scheduleIdlePause();
+  } else {
+    clearTimeout(idleTimer);
+    if (pausedByIdle) {
+      pausedByIdle = false;
+      btnStop.style.display = '';
+      btnResume.style.display = 'none';
+      connect();
+    }
+  }
+});
+
 boot();
 </script>
 <script>

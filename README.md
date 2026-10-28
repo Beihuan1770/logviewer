@@ -32,6 +32,8 @@
 - 实时追踪：暂停 / 继续、全屏、下载整份文件
 - 向上翻历史：滚动到顶部自动加载更早 200 行，视线位置不跳
 - 内容过滤：关键字过滤并高亮命中（应用页的过滤对所有分栏同时生效）
+- 等级过滤：错误 / 警告 / 信息 三个开关，可只看错误或只看警告
+- 后台自动暂停：标签页在后台超过 `idle_pause_minutes`（默认 30）分钟自动停止追踪、释放 SSH，切回前台自动恢复
 - 日志等级着色：错误红、警告黄、成功绿、其余白
 - 分栏数量由配置行数决定：一行一栏，单机单日志就是一栏铺满；同一主机可以写多行
 - 目录浏览：文件名搜索、按修改时间筛选、多选批量下载
@@ -89,7 +91,7 @@ GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o logviewer .
 ./stop.sh && mv -f logviewer.new logviewer && chmod +x logviewer && ./start.sh
 ```
 
-构建时也可以直接注入版本号：`-ldflags "-s -w -X main.version=v2.4.1"`。
+构建时也可以直接注入版本号：`-ldflags "-s -w -X main.version=v2.6.1"`。
 
 ## 配置文件
 
@@ -99,6 +101,7 @@ GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o logviewer .
 |:--|:--|:--|
 | `port` | 监听端口 | `23344` |
 | `tail_lines` | 首次打开加载的行数，也是向上翻页的起点 | 代码内 `1000`，示例文件写 `200` |
+| `idle_pause_minutes` | 标签页在后台超过该分钟数后自动停止追踪（释放 SSH），切回前台自动恢复；`0` 表示关闭 | `30` |
 | `allow_any_path` | 「路径追踪」页是否允许打开任意绝对路径 | `false` |
 | `path_roots` | `allow_any_path: false` 时额外放行的目录列表 | 空 |
 | `defaults.user` | 主机未显式填写时的 SSH 用户 | `root` |
@@ -207,6 +210,7 @@ path_roots:
 | `/api/stat` | 远端路径的存在性、大小、修改时间 |
 | `/api/download` | 下载整份文件（受路径白名单约束） |
 | `/api/version` | 当前版本号 |
+| `/api/settings` | 前端配置（目前是 `idle_pause_minutes`） |
 
 ## 服务管理
 
@@ -242,11 +246,11 @@ start.sh, stop.sh, restart.sh
 
 ## 版本
 
-当前版本 **v2.4**，版本号唯一来源是 `main.go` 里的 `var version = "v2.4"`，页面通过 `GET /api/version` 获取。不修改源码也可以注入版本号：
+当前版本 **v2.6**，版本号唯一来源是 `main.go` 里的 `var version = "v2.6"`，页面通过 `GET /api/version` 获取。不修改源码也可以注入版本号：
 
 ```bash
-go build -ldflags "-s -w -X main.version=v2.4.1" -o logviewer .
-./logviewer -version        # 输出 v2.4
+go build -ldflags "-s -w -X main.version=v2.6.1" -o logviewer .
+./logviewer -version        # 输出 v2.6
 ```
 
 版本沿革：
@@ -259,8 +263,10 @@ go build -ldflags "-s -w -X main.version=v2.4.1" -o logviewer .
 | v2.2 | 同一主机可配置多份日志（一行一栏）；新增 `restart.sh` |
 | v2.3 | 修复停止追踪后「全屏追踪」按钮被置灰、点击无效的问题 |
 | v2.4 | 性能：向上翻页改为按字节窗口增量读取（不再重扫文件）、WebSocket 100ms 批量推流、主机日志页批量渲染并限制 DOM 节点 |
+| v2.5 | 按等级过滤（错误 / 警告 / 信息） |
+| v2.6 | 标签页在后台超时自动停止追踪（可配置，默认 30 分钟），切回前台自动恢复 |
 
-精简版（只有主机日志，无 Tab、无应用分栏、无路径追踪）维护在同一仓库的 `v1-lite` 分支，版本号 v1.0，默认端口 13344。
+精简版（只有主机日志，无 Tab、无应用分栏、无路径追踪）维护在同一仓库的 `v1-lite` 分支，版本号 v1.1，默认端口 13344。
 
 ## 许可证
 

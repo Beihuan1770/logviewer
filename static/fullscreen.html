@@ -356,6 +356,39 @@ logBox.addEventListener('scroll', () => {
   }
 });
 
+// ============ 后台自动暂停 ============
+let idlePauseMinutes = 30;
+let idleTimer = null;
+let pausedByIdle = false;
+
+fetch('/api/settings').then(r => r.json()).then(d => {
+  if (d && typeof d.idle_pause_minutes === 'number') idlePauseMinutes = d.idle_pause_minutes;
+}).catch(() => {});
+
+function scheduleIdlePause() {
+  clearTimeout(idleTimer);
+  if (!idlePauseMinutes || idlePauseMinutes <= 0) return;
+  idleTimer = setTimeout(() => {
+    if (document.visibilityState !== 'hidden') return;
+    if (btnStop.disabled) return;
+    pausedByIdle = true;
+    stopLive();
+    updateConnStatus('online', '已暂停（后台 ' + idlePauseMinutes + ' 分钟）');
+  }, idlePauseMinutes * 60 * 1000);
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') {
+    scheduleIdlePause();
+  } else {
+    clearTimeout(idleTimer);
+    if (pausedByIdle) {
+      pausedByIdle = false;
+      resumeLive();
+    }
+  }
+});
+
 connect();
 </script>
 <script>

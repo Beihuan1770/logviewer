@@ -128,6 +128,12 @@ tr.directory:hover td { background: #eff6ff; }
 .search-row input:focus { border-color: #2b8cff; }
 .line-count { font-size: 12px; color: #64748b; margin-left: auto; }
 
+.level-filters { display: flex; gap: 4px; }
+.level-btn { border: 1px solid #d8e2f0; background: #fff; color: #64748b; font-size: 11px; padding: 3px 8px; border-radius: 6px; cursor: pointer; }
+.level-btn.active { background: #eef4ff; border-color: #2b8cff; color: #1d4ed8; font-weight: 600; }
+.level-btn[data-level="error"].active { background: #fef2f2; border-color: #f87171; color: #b91c1c; }
+.level-btn[data-level="warn"].active { background: #fffbeb; border-color: #fbbf24; color: #b45309; }
+
 .log-box {
   flex: 1; min-height: 0; overflow-y: auto;
   border-radius: 12px; background: #0a0e13; color: #e6edf3; padding: 4px 0;
@@ -243,6 +249,11 @@ tr.directory:hover td { background: #eff6ff; }
       </div>
       <div class="search-row">
         <input id="logSearchInput" type="text" placeholder="日志内容搜索..." oninput="reRenderLog()" />
+        <div class="level-filters" id="levelFilters">
+          <button class="level-btn active" data-level="error">错误</button>
+          <button class="level-btn active" data-level="warn">警告</button>
+          <button class="level-btn active" data-level="info">信息</button>
+        </div>
         <span class="line-count" id="lineCount">0 行</span>
       </div>
       <div class="log-box" id="logBox">
@@ -261,6 +272,7 @@ let ws = null, reconnectTimer = null, reconnectDelay = 1000;
 let connected = false, selectedHost = null, selectedFile = null;
 let logLines = [], logFilterText = '';
 let pendingLines = [], flushTimer = null;
+let levelFilter = { error: true, warn: true, info: true };
 let currentItems = [], visibleItems = [];
 let currentPath = '';
 let hosts = [];
@@ -348,6 +360,7 @@ function handleMessage(msg) {
       const frag = document.createDocumentFragment();
       for (const line of initLines) {
         logLines.push(line);
+        if (!passLine(line)) continue;
         frag.appendChild(createLogElement(line));
       }
       logBox.appendChild(frag);
@@ -691,6 +704,7 @@ function stopTail() {
 
 function resumeTail() {
   if (!selectedFile) return;
+  pausedByIdle = false;
   startLogInit();
 }
 
@@ -771,6 +785,20 @@ function appendLine(line) {
   updateLineCount();
 }
 
+// 等级归类：错误 / 警告 / 其余都算信息
+function levelKind(line) {
+  const c = levelClass(line);
+  if (c === 'level-error') return 'error';
+  if (c === 'level-warn') return 'warn';
+  return 'info';
+}
+
+// 文本过滤 + 等级过滤，两处渲染共用
+function passLine(line) {
+  if (logFilterText && !line.toLowerCase().includes(logFilterText)) return false;
+  return !!levelFilter[levelKind(line)];
+}
+
 function scheduleFlush() {
   if (flushTimer) return;
   flushTimer = setTimeout(flushLines, 120);
@@ -782,11 +810,15 @@ function flushLines() {
   if (!pendingLines.length) return;
   const fragment = document.createDocumentFragment();
   for (const line of pendingLines) {
-    if (logFilterText && !line.toLowerCase().includes(logFilterText)) continue;
+    if (!passLine(line)) continue;
     fragment.appendChild(createLogElement(line));
   }
   pendingLines = [];
-  if (fragment.childNodes.length) logBox.appendChild(fragment);
+  const placeholder = logBox.querySelector('.empty-state');
+  if (fragment.childNodes.length) {
+    if (placeholder) placeholder.remove();
+    logBox.appendChild(fragment);
+  }
   while (logBox.childElementCount > 6000) logBox.removeChild(logBox.firstElementChild);
   if (isAutoScroll) logBox.scrollTop = logBox.scrollHeight;
 }
@@ -840,9 +872,15 @@ function reRenderLog() {
   dropPending();
   logBox.innerHTML = '';
   for (const line of logLines) {
-    if (logFilterText && !line.toLowerCase().includes(logFilterText)) continue;
+    if (!passLine(line)) continue;
     const div = createLogElement(line);
     logBox.appendChild(div);
+  }
+  if (!logBox.childElementCount) {
+    const empty = document.createElement('div');
+    empty.className = 'empty-state';
+    empty.textContent = '当前过滤条件下没有内容';
+    logBox.appendChild(empty);
   }
   if (isAutoScroll) logBox.scrollTop = logBox.scrollHeight;
   updateLineCount();
@@ -876,6 +914,49 @@ logBox.addEventListener('scroll', () => {
   }
   if (logBox.scrollTop <= 50 && !isLoadingHistory && hasMoreHistory && selectedFile && selectedHost) {
     loadPrevLines();
+  }
+});
+
+// ============ 等级过滤 ============
+document.querySelectorAll('.level-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const lv = btn.dataset.level;
+    levelFilter[lv] = !levelFilter[lv];
+    btn.classList.toggle('active', levelFilter[lv]);
+    reRenderLog();
+  });
+});
+
+// ============ 后台自动暂停 ============
+let idlePauseMinutes = 30;
+let idleTimer = null;
+let pausedByIdle = false;
+
+fetch('/api/settings').then(r => r.json()).then(d => {
+  if (d && typeof d.idle_pause_minutes === 'number') idlePauseMinutes = d.idle_pause_minutes;
+}).catch(() => {});
+
+function scheduleIdlePause() {
+  clearTimeout(idleTimer);
+  if (!idlePauseMinutes || idlePauseMinutes <= 0) return;
+  idleTimer = setTimeout(() => {
+    if (document.visibilityState !== 'hidden') return;
+    if (!selectedFile || btnStop.disabled) return;
+    pausedByIdle = true;
+    stopTail();
+    updateConnStatus('online', '已暂停（后台 ' + idlePauseMinutes + ' 分钟）');
+  }, idlePauseMinutes * 60 * 1000);
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') {
+    scheduleIdlePause();
+  } else {
+    clearTimeout(idleTimer);
+    if (pausedByIdle) {
+      pausedByIdle = false;
+      resumeTail();
+    }
   }
 });
 
