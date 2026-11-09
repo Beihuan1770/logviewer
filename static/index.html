@@ -62,23 +62,22 @@ html, body {
 }
 .section-label { font-size: 11px; letter-spacing: 3px; color: #64748b; margin-bottom: 6px; font-weight: 700; }
 
-.path-host-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
+.path-host-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; flex-wrap: nowrap; }
 .pathbar { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; flex: 1; min-width: 0; }
 .crumb { background: #e8f1ff; color: #1d4ed8; border-radius: 999px; padding: 4px 9px; font-size: 12px; cursor: pointer; white-space: nowrap; }
 .crumb:hover { background: #d0e0ff; }
-.host-select { flex: 0 0 200px; }
-.host-select select { width: 100%; height: 34px; padding: 4px 10px; border: 1px solid #d8e2f0; border-radius: 9px; font-size: 13px; outline: none; background: #fff; }
+.host-select { flex: 0 0 170px; }
+.host-select select { width: 100%; height: 34px; padding: 4px 8px; border: 1px solid #d8e2f0; border-radius: 9px; font-size: 12px; outline: none; background: #fff; }
 
-.filter-row { display: flex; gap: 6px; margin-bottom: 6px; position: relative; }
-.filter-row input { width: 100%; padding: 5px 8px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 13px; outline: none; background: #fff; color: #1f2d3d; transition: border-color .15s, box-shadow .15s; }
-.filter-row input:hover { border-color: #4096ff; }
-.filter-row input:focus { border-color: #1677ff; box-shadow: 0 0 0 2px rgba(5,145,255,.10); }
-
-/* 日期 + 时间区间选择：仿 Ant Design RangePicker（showTime） */
-.time-range { position: relative; flex: 1; display: flex; align-items: center; }
-.time-range .time-icon { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); width: 15px; height: 15px; pointer-events: none; color: #8c8c8c; }
-.time-range input { padding-left: 30px; padding-right: 26px; cursor: pointer; }
-.time-clear { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); border: none; background: transparent; color: #bfbfbf; font-size: 14px; line-height: 1; cursor: pointer; }
+/* 面包屑单独一行；时间框与主机下拉同一行 */
+.pathbar-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.pathbar-row .pathbar { flex: 1; min-width: 0; }
+.time-range { position: relative; display: flex; align-items: center; flex: 1 1 auto; min-width: 0; max-width: 200px; }
+.time-range .time-icon { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); width: 13px; height: 13px; pointer-events: none; color: #8c8c8c; }
+.time-range input { width: 100%; height: 32px; padding: 3px 24px 3px 25px; cursor: pointer; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 12px; color: #1f2d3d; background: #fff; outline: none; transition: border-color .15s, box-shadow .15s; }
+.time-range input:hover { border-color: #4096ff; }
+.time-range input:focus { border-color: #1677ff; box-shadow: 0 0 0 2px rgba(5,145,255,.10); }
+.time-clear { position: absolute; right: 7px; top: 50%; transform: translateY(-50%); border: none; background: transparent; color: #bfbfbf; font-size: 14px; line-height: 1; cursor: pointer; }
 .time-clear:hover { color: #ff4d4f; }
 .time-pop { display: none; position: fixed; width: 620px; max-width: calc(100vw - 24px); background: #fff; border: 1px solid #f0f0f0; border-radius: 8px; box-shadow: 0 6px 16px rgba(0,0,0,.08), 0 3px 6px -4px rgba(0,0,0,.12); z-index: 50; padding: 10px 14px 12px; }
 .time-pop.show { display: block; }
@@ -204,9 +203,9 @@ tr.directory:hover td { background: #eff6ff; }
   .wrap { grid-template-columns: 1fr; overflow-y: auto; }
   .left-panel .card, .right-panel .card { height: auto; }
   .log-box { min-height: 380px; }
-  .filter-row { grid-template-columns: 1fr; }
-  .path-host-row { flex-direction: column; }
-  .host-select { flex: 1; width: 100%; }
+  .path-host-row { flex-wrap: nowrap; gap: 4px; }
+  .time-range { flex: 1 1 auto; max-width: 200px; }
+  .host-select { flex: 0 0 150px; }
 }
 </style>
 </head>
@@ -230,20 +229,20 @@ tr.directory:hover td { background: #eff6ff; }
       <div class="left-fixed-top">
         <div class="section-label">CURRENT PATH</div>
 
-        <div class="path-host-row">
+        <div class="pathbar-row">
           <div class="pathbar" id="breadcrumb"></div>
-          <div class="host-select"><select id="hostSelect"></select></div>
-          <button class="btn btn-primary btn-sm" onclick="refreshDir()">刷新</button>
-          <button class="btn btn-light btn-sm" onclick="goParent()">上级</button>
         </div>
 
-        <div class="filter-row">
+        <div class="path-host-row">
           <div class="time-range" id="timeRange">
             <svg class="time-icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4.5 1a.5.5 0 0 1 .5.5V2h6V1.5a.5.5 0 1 1 1 0V2h1.5A1.5 1.5 0 0 1 15 3.5v10A1.5 1.5 0 0 1 13.5 15h-11A1.5 1.5 0 0 1 1 13.5v-10A1.5 1.5 0 0 1 2.5 2H4V1.5a.5.5 0 0 1 .5-.5zM2 5v8.5c0 .276.224.5.5.5h11c.276 0 .5-.224.5-.5V5H2z"/></svg>
-            <input id="timeRangeInput" type="text" readonly placeholder="选择日期与时间范围（点两次选起止）"
+            <input id="timeRangeInput" type="text" readonly placeholder="日期与时间范围"
                    onclick="openTimePanel()" />
             <button type="button" class="time-clear" id="timeClearBtn" title="清除时间筛选" onclick="clearTimeRange(event)">×</button>
           </div>
+          <div class="host-select"><select id="hostSelect"></select></div>
+          <button class="btn btn-primary btn-sm" onclick="refreshDir()">刷新</button>
+          <button class="btn btn-light btn-sm" onclick="goParent()">上级</button>
         </div>
 
         <div class="toolbar-row">
