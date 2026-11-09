@@ -275,11 +275,11 @@ start.sh, stop.sh, restart.sh
 
 ## 版本
 
-当前版本 **v2.9**，版本号唯一来源是 `main.go` 里的 `var version = "v2.9"`，页面通过 `GET /api/version` 获取。仓库根的 `logviewer-linux-amd64` 与这个版本号一一对应，发版时同步替换。不修改源码也可以注入版本号：
+当前版本 **v2.10**，版本号唯一来源是 `main.go` 里的 `var version = "v2.10"`，页面通过 `GET /api/version` 获取。仓库根的 `logviewer-linux-amd64` 与这个版本号一一对应，发版时同步替换。不修改源码也可以注入版本号：
 
 ```bash
-go build -ldflags "-s -w -X main.version=v2.9.1" -o logviewer .
-./logviewer -version        # 输出 v2.9
+go build -ldflags "-s -w -X main.version=v2.10.1" -o logviewer .
+./logviewer -version        # 输出 v2.10
 ```
 
 版本沿革：
@@ -297,8 +297,9 @@ go build -ldflags "-s -w -X main.version=v2.9.1" -o logviewer .
 | v2.7 | 终端 ANSI 彩色转义渲染（16/256/真彩，其余控制序列丢弃）；窗口化虚拟滚动（DOM 只渲染约 2500 行，长日志挂机与任意翻页不卡） |
 | v2.8 | 仓库内直接附带预编译二进制 `logviewer-linux-amd64`，下载改名即用，不需要自己编译 |
 | v2.9 | 去掉「路径追踪」页（/tail.html、/api/stat、顶部 Tab）；时间筛选改为单框点两次选区间；新增 DEBUG 粉色着色 |
+| v2.10 | 时间选择面板改为 Ant Design 风格：白卡浮层、双栏（上午 / 下午）、蓝圈端点 + 浅蓝区间、日历图标 |
 
-精简版（只有主机日志，无 Tab、无应用分栏）维护在同一仓库的 `v1-lite` 分支，版本号 v1.5，默认端口 13344，同样自带预编译二进制 `logviewer-linux-amd64`。
+精简版（只有主机日志，无 Tab、无应用分栏）维护在同一仓库的 `v1-lite` 分支，版本号 v1.6，默认端口 13344，同样自带预编译二进制 `logviewer-linux-amd64`。
 
 ## 许可证
 
