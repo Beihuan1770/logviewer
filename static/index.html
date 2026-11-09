@@ -167,6 +167,7 @@ tr.directory:hover td { background: #eff6ff; }
 .level-btn.active { background: #eef4ff; border-color: #2b8cff; color: #1d4ed8; font-weight: 600; }
 .level-btn[data-level="error"].active { background: #fef2f2; border-color: #f87171; color: #b91c1c; }
 .level-btn[data-level="warn"].active { background: #fffbeb; border-color: #fbbf24; color: #b45309; }
+.level-btn[data-level="debug"].active { background: #fdf2f8; border-color: #f778ba; color: #c2255c; }
 
 .log-box {
   flex: 1; min-height: 0; overflow-y: auto;
@@ -292,6 +293,7 @@ tr.directory:hover td { background: #eff6ff; }
           <button class="level-btn active" data-level="error">错误</button>
           <button class="level-btn active" data-level="warn">警告</button>
           <button class="level-btn active" data-level="info">信息</button>
+          <button class="level-btn active" data-level="debug">DEBUG</button>
         </div>
         <span class="line-count" id="lineCount">0 行</span>
       </div>
@@ -344,7 +346,7 @@ let ws = null, reconnectTimer = null, reconnectDelay = 1000;
 let connected = false, selectedHost = null, selectedFile = null;
 let logFilterText = '';
 let pendingLines = [], flushTimer = null;
-let levelFilter = { error: true, warn: true, info: true };
+let levelFilter = { error: true, warn: true, info: true, debug: true };
 let currentItems = [], visibleItems = [];
 let currentPath = '';
 let hosts = [];
@@ -1031,11 +1033,12 @@ function appendLine(line) {
   scheduleFlush();
 }
 
-// 等级归类：错误 / 警告 / 其余都算信息
+// 等级归类：错误 / 警告 / DEBUG / 其余都算信息
 function levelKind(line) {
   const c = levelClass(line);
   if (c === 'level-error') return 'error';
   if (c === 'level-warn') return 'warn';
+  if (c === 'level-debug') return 'debug';
   return 'info';
 }
 
@@ -1084,7 +1087,7 @@ function backToBottom() {
 function reRenderLog() {
   logFilterText = logSearchInput.value.toLowerCase();
   dropPending();
-  const filtered = logFilterText || !(levelFilter.error && levelFilter.warn && levelFilter.info);
+  const filtered = logFilterText || !(levelFilter.error && levelFilter.warn && levelFilter.info && levelFilter.debug);
   vs.emptyHtml = filtered ? FILTER_EMPTY : DEFAULT_EMPTY;
   vs.refilter();
   updateLineCount();

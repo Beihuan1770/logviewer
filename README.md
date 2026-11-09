@@ -8,7 +8,7 @@
 
 ## 和主线的区别
 
-| 项 | 主线 v2.x | 本精简版 v1.11 |
+| 项 | 主线 v2.x | 本精简版 v1.12 |
 |:--|:--|:--|
 | 页面 | 主机日志 / 应用日志（顶部两个 Tab） | **只有主机日志**（无 Tab） |
 | 配置项 | `hosts` + `apps` + `allow_any_path` + `path_roots` | `port` + `tail_lines` + `idle_pause_minutes` + `defaults` + `hosts` |
@@ -130,7 +130,7 @@ hosts:
 
 ## 版本
 
-当前版本 **v1.11**，来源是 `main.go` 的 `var version = "v1.11"`；**界面不显示版本号**，需要核对时调 `GET /api/version`。仓库根的 `logviewer-linux-amd64` 与版本号一一对应。
+当前版本 **v1.12**，来源是 `main.go` 的 `var version = "v1.12"`；**界面不显示版本号**，需要核对时调 `GET /api/version`。仓库根的 `logviewer-linux-amd64` 与版本号一一对应。
 
 版本沿革：
 
@@ -148,6 +148,7 @@ hosts:
 | v1.9 | 主机下拉加长到 280px；刷新/上级按钮靠右并与输入框留白 |
 | v1.10 | 主机下拉按最长选项文字自适应宽度（上限 280px） |
 | v1.11 | 主机下拉固定为 181px |
+| v1.12 | 等级过滤新增 DEBUG 按钮（信息右侧，粉色） |
 
 ## 许可证
 
