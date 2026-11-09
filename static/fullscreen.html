@@ -43,6 +43,7 @@ input:focus { border-color: #58a6ff; }
 .log-line.level-error { color: #ff7b72; background: rgba(248,81,73,0.10); border-left: 2px solid #f85149; }
 .log-line.level-warn { color: #e3b341; background: rgba(210,153,29,0.10); border-left: 2px solid #d2991d; }
 .log-line.level-success { color: #56d364; background: rgba(63,185,80,0.10); border-left: 2px solid #3fb950; }
+.log-line.level-debug { color: #f778ba; background: rgba(247,120,186,0.10); border-left: 2px solid #f778ba; }
 
 #backToBottom {
   position: absolute; bottom: 12px; right: 18px; z-index: 5;
@@ -58,7 +59,6 @@ input:focus { border-color: #58a6ff; }
     <span id="titleText" style="font-weight:600;">日志追踪</span>
     <span id="statusText" style="color:#8b949e;font-size:12px;">连接中...</span>
     <span id="lineCount" style="color:#8b949e;font-size:12px;">0 行</span>
-    <span id="appVer" style="color:#8b949e;font-size:12px;"></span>
   </div>
   <div class="topbar-right">
     <input id="logSearchInput" type="text" placeholder="搜索..." oninput="reRenderLog()" />
@@ -246,7 +246,7 @@ const LEVEL_CLASS = {
   warn: 'level-warn', warning: 'level-warn',
   success: 'level-success', ok: 'level-success', pass: 'level-success', passed: 'level-success',
   done: 'level-success', completed: 'level-success',
-  info: '', notice: '', debug: '', trace: '', verbose: ''
+  info: '', notice: '', debug: 'level-debug', trace: '', verbose: ''
 };
 
 function levelClass(line) {
@@ -382,13 +382,6 @@ document.addEventListener('visibilitychange', () => {
 });
 
 connect();
-</script>
-<script>
-// 版本号：统一从 /api/version 读（main.go 里的 version 变量），取不到就留空
-fetch('/api/version').then(function (r) { return r.json(); }).then(function (d) {
-  var el = document.getElementById('appVer');
-  if (el) el.textContent = d.version || '';
-}).catch(function () { });
 </script>
 </body>
 </html>
