@@ -74,30 +74,37 @@ html, body {
 .filter-row input:hover { border-color: #4096ff; }
 .filter-row input:focus { border-color: #1677ff; box-shadow: 0 0 0 2px rgba(5,145,255,.10); }
 
-/* 时间区间选择：仿 Ant Design 双栏面板 */
+/* 日期 + 时间区间选择：仿 Ant Design RangePicker（showTime） */
 .time-range { position: relative; flex: 1; display: flex; align-items: center; }
 .time-range .time-icon { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); width: 15px; height: 15px; pointer-events: none; color: #8c8c8c; }
 .time-range input { padding-left: 30px; padding-right: 26px; cursor: pointer; }
 .time-clear { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); border: none; background: transparent; color: #bfbfbf; font-size: 14px; line-height: 1; cursor: pointer; }
 .time-clear:hover { color: #ff4d4f; }
-.time-pop { display: none; position: fixed; width: 566px; max-width: calc(100vw - 24px); background: #fff; border: 1px solid #f0f0f0; border-radius: 8px; box-shadow: 0 6px 16px rgba(0,0,0,.08), 0 3px 6px -4px rgba(0,0,0,.12); z-index: 50; padding: 10px 14px 12px; }
+.time-pop { display: none; position: fixed; width: 620px; max-width: calc(100vw - 24px); background: #fff; border: 1px solid #f0f0f0; border-radius: 8px; box-shadow: 0 6px 16px rgba(0,0,0,.08), 0 3px 6px -4px rgba(0,0,0,.12); z-index: 50; padding: 10px 14px 12px; }
 .time-pop.show { display: block; }
-.time-head { display: flex; align-items: center; gap: 8px; justify-content: center; padding: 2px 0 8px; border-bottom: 1px solid #f5f5f5; }
+.dt-head { display: flex; align-items: center; gap: 10px; justify-content: center; padding: 2px 0 8px; border-bottom: 1px solid #f5f5f5; }
 .time-nav { border: none; background: transparent; color: #8c8c8c; width: 24px; height: 24px; border-radius: 4px; cursor: pointer; font-size: 14px; line-height: 1; }
 .time-nav:hover { background: #f5f5f5; color: #1677ff; }
-.time-day { font-size: 14px; color: #1f1f1f; font-weight: 600; min-width: 140px; text-align: center; }
-.time-tip { font-size: 11px; color: #8c8c8c; text-align: center; padding: 6px 0 2px; }
-.time-cols { display: flex; gap: 14px; }
-.time-col { flex: 1; min-width: 0; }
-.time-col + .time-col { border-left: 1px solid #f5f5f5; padding-left: 14px; }
-.time-col-title { font-size: 12px; color: #595959; text-align: center; padding: 4px 0 6px; }
-.time-grid { display: block; }
-.time-row { display: flex; align-items: center; gap: 2px; height: 28px; }
-.time-hour { width: 20px; flex: 0 0 20px; font-size: 12px; color: #bfbfbf; text-align: right; }
-.time-cell { flex: 1; min-width: 0; height: 24px; border: none; background: transparent; color: #1f1f1f; font-size: 12px; border-radius: 4px; cursor: pointer; padding: 0; line-height: 24px; text-align: center; }
-.time-cell:hover { background: #f5f5f5; }
-.time-cell.start, .time-cell.end { background: #1677ff; color: #fff; border-radius: 12px; }
-.time-cell.inrange { background: #e6f4ff; color: #1677ff; border-radius: 0; }
+.time-day { font-size: 14px; color: #1f1f1f; font-weight: 600; }
+.dt-cols { display: flex; gap: 18px; }
+.dt-cal { flex: 1; min-width: 0; }
+.dt-week { display: grid; grid-template-columns: repeat(7, 1fr); font-size: 12px; color: #8c8c8c; text-align: center; padding: 6px 0; }
+.dt-grid { display: grid; grid-template-columns: repeat(7, 1fr); row-gap: 2px; }
+.dt-cell { height: 30px; border: none; background: transparent; font-size: 13px; color: #1f1f1f; border-radius: 4px; cursor: pointer; padding: 0; }
+.dt-cell:hover { background: #f5f5f5; }
+.dt-cell.other { color: #c9c9c9; }
+.dt-cell.inrange { background: #e6f4ff; color: #1677ff; border-radius: 0; }
+.dt-cell.start, .dt-cell.end { background: #1677ff; color: #fff; border-radius: 50%; }
+.dt-time { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 0 4px; margin-top: 8px; border-top: 1px solid #f5f5f5; font-size: 12px; color: #595959; }
+.dt-time select { border: 1px solid #d9d9d9; border-radius: 4px; padding: 2px 4px; font-size: 12px; color: #1f1f1f; background: #fff; outline: none; }
+.dt-time select:hover { border-color: #4096ff; }
+.dt-sep { color: #bfbfbf; }
+.time-tip { font-size: 11px; color: #8c8c8c; text-align: center; padding: 6px 0 0; }
+.dt-foot { display: flex; gap: 6px; align-items: center; padding-top: 8px; margin-top: 6px; border-top: 1px solid #f5f5f5; }
+.dt-quick { border: none; background: transparent; color: #1677ff; font-size: 12px; cursor: pointer; padding: 4px 6px; border-radius: 4px; }
+.dt-quick:hover { background: #e6f4ff; }
+.dt-ok { border: none; background: #1677ff; color: #fff; font-size: 12px; border-radius: 4px; padding: 5px 14px; cursor: pointer; }
+.dt-ok:hover { background: #4096ff; }
 
 .toolbar-row { display: flex; gap: 6px; align-items: center; margin-bottom: 4px; }
 .toolbar-row input[type="text"] { flex: 1; padding: 5px 8px; border: 1px solid #d8e2f0; border-radius: 9px; font-size: 13px; outline: none; }
@@ -233,8 +240,8 @@ tr.directory:hover td { background: #eff6ff; }
         <div class="filter-row">
           <div class="time-range" id="timeRange">
             <svg class="time-icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4.5 1a.5.5 0 0 1 .5.5V2h6V1.5a.5.5 0 1 1 1 0V2h1.5A1.5 1.5 0 0 1 15 3.5v10A1.5 1.5 0 0 1 13.5 15h-11A1.5 1.5 0 0 1 1 13.5v-10A1.5 1.5 0 0 1 2.5 2H4V1.5a.5.5 0 0 1 .5-.5zM2 5v8.5c0 .276.224.5.5.5h11c.276 0 .5-.224.5-.5V5H2z"/></svg>
-            <input id="timeRangeInput" type="text" placeholder="选择时间范围（点两次选起止，或输入 09:00-11:30）"
-                   onclick="openTimePanel()" onchange="parseTimeInput()" />
+            <input id="timeRangeInput" type="text" readonly placeholder="选择日期与时间范围（点两次选起止）"
+                   onclick="openTimePanel()" />
             <button type="button" class="time-clear" id="timeClearBtn" title="清除时间筛选" onclick="clearTimeRange(event)">×</button>
           </div>
         </div>
@@ -303,23 +310,33 @@ tr.directory:hover td { background: #eff6ff; }
 <script src="/ansi.js"></script>
 <script src="/vscroll.js"></script>
 
-<!-- 时间区间面板：挂在 body 上、fixed 定位，避免被卡片的 overflow 裁掉 -->
+<!-- 日期 + 时间区间面板：挂在 body 上、fixed 定位，避免被卡片的 overflow 裁掉 -->
 <div class="time-pop" id="timePop" onclick="event.stopPropagation()">
-  <div class="time-head">
-    <button type="button" class="time-nav" onclick="shiftTimeDay(-1)">‹</button>
-    <span class="time-day" id="timePopDay"></span>
-    <button type="button" class="time-nav" onclick="shiftTimeDay(1)">›</button>
+  <div class="dt-head">
+    <button type="button" class="time-nav" onclick="shiftMonth(-1)">‹</button>
+    <span class="time-day" id="dtMonth1"></span>
+    <span style="width:12px;"></span>
+    <span class="time-day" id="dtMonth2"></span>
+    <button type="button" class="time-nav" onclick="shiftMonth(1)">›</button>
   </div>
-  <div class="time-tip" id="timePopTip">第一次点选起点，第二次点选终点</div>
-  <div class="time-cols">
-    <div class="time-col">
-      <div class="time-col-title">上午</div>
-      <div class="time-grid" id="timeGridAm"></div>
-    </div>
-    <div class="time-col">
-      <div class="time-col-title">下午</div>
-      <div class="time-grid" id="timeGridPm"></div>
-    </div>
+  <div class="dt-cols">
+    <div class="dt-cal" id="dtCal1"></div>
+    <div class="dt-cal" id="dtCal2"></div>
+  </div>
+  <div class="dt-time">
+    <span>开始</span>
+    <select id="dtStartH"></select><span class="dt-sep">:</span><select id="dtStartM"></select>
+    <span class="dt-sep" style="padding:0 6px;">~</span>
+    <span>结束</span>
+    <select id="dtEndH"></select><span class="dt-sep">:</span><select id="dtEndM"></select>
+  </div>
+  <div class="time-tip" id="timePopTip">第一次点选开始日期，第二次点选结束日期</div>
+  <div class="dt-foot">
+    <button type="button" class="dt-quick" onclick="quickRange('today')">今天</button>
+    <button type="button" class="dt-quick" onclick="quickRange('month')">本月</button>
+    <span style="flex:1"></span>
+    <button type="button" class="dt-quick" onclick="clearTimeRange(event)">清除</button>
+    <button type="button" class="dt-ok" onclick="closeTimePanel()">完成</button>
   </div>
 </div>
 
@@ -364,10 +381,15 @@ const downloadSelectedBtn = document.getElementById('downloadSelectedBtn');
 const selectAllChk = document.getElementById('selectAllChk');
 const timeRangeInput = document.getElementById('timeRangeInput');
 const timePop = document.getElementById('timePop');
-const timePopDay = document.getElementById('timePopDay');
 const timePopTip = document.getElementById('timePopTip');
-const timeGridAm = document.getElementById('timeGridAm');
-const timeGridPm = document.getElementById('timeGridPm');
+const dtMonth1 = document.getElementById('dtMonth1');
+const dtMonth2 = document.getElementById('dtMonth2');
+const dtCal1 = document.getElementById('dtCal1');
+const dtCal2 = document.getElementById('dtCal2');
+const dtStartH = document.getElementById('dtStartH');
+const dtStartM = document.getElementById('dtStartM');
+const dtEndH = document.getElementById('dtEndH');
+const dtEndM = document.getElementById('dtEndM');
 
 // ============ 虚拟滚动容器 ============
 // 数据全量留内存，DOM 只渲染可视窗口，长日志挂机也不会卡
@@ -599,30 +621,55 @@ function isCompressed(name) {
   return n.endsWith('.gz') || n.endsWith('.zip') || n.endsWith('.tar') || n.endsWith('.tgz') || n.endsWith('.bz2') || n.endsWith('.xz') || n.endsWith('.7z') || n.endsWith('.rar');
 }
 
-// ============ 时间区间筛选（单框：点两次选起止，也可手输 09:00-11:30） ============
-let timeStart = null, timeEnd = null;   // 应用中的区间（Date）
-let timePopDate = new Date();           // 面板当前日期（只到天）
-let pickStart = null, pickEnd = null;   // 面板中已选的两个时间点（当天分钟数）
+// ============ 日期 + 时间区间筛选（双月日历 + 起止时分） ============
+let timeStart = null, timeEnd = null;        // 已应用的区间
+let pickStartDay = null, pickEndDay = null;  // 已选起止日期（只到天）
+let pickStartH = 0, pickStartM = 0;          // 起点时分（默认 00:00）
+let pickEndH = 23, pickEndM = 59;            // 终点时分（默认 23:59）
+let calAnchor = new Date();                  // 左月锚点（该月 1 号）
+
+const WEEK_CN = ['一', '二', '三', '四', '五', '六', '日'];
+const MIN_STEP = 1;
 
 function pad2(n) { return (n < 10 ? '0' : '') + n; }
-function fmtMin(m) { return pad2(Math.floor(m / 60)) + ':' + pad2(m % 60); }
-function dayLabel(d) {
-  const w = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][d.getDay()];
-  return (d.getMonth() + 1) + '月' + d.getDate() + '日 ' + w;
+function startOfDay(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+function fmtDate(d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
+function fmtDateTime(d) { return fmtDate(d) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()); }
+function fmtMonth(d) { return d.getFullYear() + ' 年 ' + (d.getMonth() + 1) + ' 月'; }
+
+// 初始化时间下拉（时 0-23，分按 5 分钟步进）
+function fillTimeSelects() {
+  let hs = '', ms = '';
+  for (let h = 0; h < 24; h++) hs += '<option value="' + h + '">' + pad2(h) + '</option>';
+  for (let m = 0; m < 60; m += MIN_STEP) ms += '<option value="' + m + '">' + pad2(m) + '</option>';
+  dtStartH.innerHTML = hs; dtEndH.innerHTML = hs;
+  dtStartM.innerHTML = ms; dtEndM.innerHTML = ms;
+  syncTimeSelects();
+  [dtStartH, dtStartM, dtEndH, dtEndM].forEach(sel => {
+    sel.addEventListener('change', () => {
+      pickStartH = parseInt(dtStartH.value, 10); pickStartM = parseInt(dtStartM.value, 10);
+      pickEndH = parseInt(dtEndH.value, 10); pickEndM = parseInt(dtEndM.value, 10);
+      applyTimeRange();
+    });
+  });
 }
-function dateAt(mins, base) {
-  const d = new Date(base.getFullYear(), base.getMonth(), base.getDate());
-  d.setMinutes(mins);
-  return d;
+function syncTimeSelects() {
+  dtStartH.value = pickStartH; dtStartM.value = pickStartM;
+  dtEndH.value = pickEndH; dtEndM.value = pickEndM;
 }
+
 function openTimePanel() {
-  if (pickStart == null) timePopDate = new Date();
-  renderTimeGrid();
-  timePop.style.width = Math.min(566, window.innerWidth - 24) + 'px';
+  if (!pickStartDay && !pickEndDay) calAnchor = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  else if (pickStartDay) calAnchor = new Date(pickStartDay.getFullYear(), pickStartDay.getMonth(), 1);
+  renderCalendars();
+  syncTimeSelects();
   timePop.classList.add('show');
+  positionTimePop();
+}
+function positionTimePop() {
   const r = timeRangeInput.getBoundingClientRect();
-  const w = timePop.offsetWidth || 566;
-  const h = timePop.offsetHeight || 420;
+  const w = timePop.offsetWidth || 620;
+  const h = timePop.offsetHeight || 460;
   let left = r.left;
   if (left + w > window.innerWidth - 12) left = Math.max(12, window.innerWidth - w - 12);
   let top = r.bottom + 6;
@@ -631,83 +678,108 @@ function openTimePanel() {
   timePop.style.top = top + 'px';
 }
 function closeTimePanel() { timePop.classList.remove('show'); }
-function shiftTimeDay(delta) {
-  timePopDate = new Date(timePopDate.getFullYear(), timePopDate.getMonth(), timePopDate.getDate() + delta);
-  renderTimeGrid();
-  if (pickStart != null && pickEnd != null) applyRange();
+function shiftMonth(delta) {
+  calAnchor = new Date(calAnchor.getFullYear(), calAnchor.getMonth() + delta, 1);
+  renderCalendars();
 }
-function renderTimeGrid() {
-  timePopDay.textContent = dayLabel(timePopDate);
-  timePopTip.textContent = pickStart == null
-    ? '第一次点选起点，第二次点选终点'
-    : (pickEnd == null ? '已选起点 ' + fmtMin(pickStart) + '，再点一次选终点'
-                       : fmtMin(pickStart) + ' - ' + fmtMin(pickEnd));
-  renderTimeHalf(timeGridAm, 0);
-  renderTimeHalf(timeGridPm, 12);
+
+function renderCalendars() {
+  const m1 = new Date(calAnchor.getFullYear(), calAnchor.getMonth(), 1);
+  const m2 = new Date(m1.getFullYear(), m1.getMonth() + 1, 1);
+  dtMonth1.textContent = fmtMonth(m1);
+  dtMonth2.textContent = fmtMonth(m2);
+  dtCal1.innerHTML = calHtml(m1);
+  dtCal2.innerHTML = calHtml(m2);
+  updateTip();
 }
-// 每半栏 12 小时，每小时一行：左侧小时，右侧 6 个 10 分钟刻度
-function renderTimeHalf(container, startHour) {
-  let html = '';
-  for (let i = 0; i < 12; i++) {
-    const hour = startHour + i;
-    html += '<div class="time-row"><span class="time-hour">' + pad2(hour) + '</span>';
-    for (let k = 0; k < 6; k++) {
-      const m = hour * 60 + k * 10;
-      let cls = 'time-cell';
-      if (pickStart != null && m === pickStart) cls += ' start';
-      if (pickEnd != null && m === pickEnd) cls += ' end';
-      if (pickStart != null && pickEnd != null && m > pickStart && m < pickEnd) cls += ' inrange';
-      html += '<button type="button" class="' + cls + '" onclick="pickTime(' + m + ')" title="' + fmtMin(m) + '">' + pad2(k * 10) + '</button>';
-    }
-    html += '</div>';
+function calHtml(first) {
+  const lead = (first.getDay() + 6) % 7;   // 周一为第一列
+  const begin = new Date(first.getFullYear(), first.getMonth(), 1 - lead);
+  const s = pickStartDay ? pickStartDay.getTime() : null;
+  const e = pickEndDay ? pickEndDay.getTime() : null;
+  let html = '<div class="dt-week">' + WEEK_CN.map(w => '<span>' + w + '</span>').join('') + '</div><div class="dt-grid">';
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(begin.getFullYear(), begin.getMonth(), begin.getDate() + i);
+    const t = d.getTime();
+    let cls = 'dt-cell' + (d.getMonth() !== first.getMonth() ? ' other' : '');
+    if (s !== null && t === s) cls += ' start';
+    if (e !== null && t === e) cls += ' end';
+    if (s !== null && e !== null && t > s && t < e) cls += ' inrange';
+    html += '<button type="button" class="' + cls + '" data-ts="' + t + '">' + d.getDate() + '</button>';
   }
-  container.innerHTML = html;
+  return html + '</div>';
 }
-function pickTime(mins) {
-  if (pickStart == null || pickEnd != null) {   // 首次点选，或上一轮已完成 → 重新开始
-    pickStart = mins; pickEnd = null;
-    renderTimeGrid();
+
+// 点日期：第一次定起点，第二次定终点（同一格点两次 = 当天全天，可再调时分）
+function pickDay(ts) {
+  const d = new Date(ts);
+  if (!pickStartDay || (pickStartDay && pickEndDay)) {
+    pickStartDay = d; pickEndDay = null;
+    renderCalendars();
     return;
   }
-  pickEnd = mins;
-  if (pickEnd < pickStart) { const t = pickStart; pickStart = pickEnd; pickEnd = t; }
-  renderTimeGrid();
-  applyRange();
-  closeTimePanel();
+  pickEndDay = d;
+  if (pickEndDay < pickStartDay) { const t = pickStartDay; pickStartDay = pickEndDay; pickEndDay = t; }
+  renderCalendars();
+  applyTimeRange();
 }
-function applyRange() {
-  timeStart = dateAt(pickStart, timePopDate);
-  timeEnd = dateAt(pickEnd, timePopDate);
-  if (timeEnd.getTime() <= timeStart.getTime()) timeEnd = new Date(timeStart.getTime() + 60000);
-  timeRangeInput.value = fmtMin(pickStart) + ' - ' + fmtMin(pickEnd) + '（' + (timePopDate.getMonth() + 1) + '/' + timePopDate.getDate() + '）';
+function updateTip() {
+  if (!pickStartDay) { timePopTip.textContent = '第一次点选开始日期，第二次点选结束日期'; return; }
+  if (!pickEndDay) { timePopTip.textContent = '已选开始 ' + fmtDate(pickStartDay) + ' ' + pad2(pickStartH) + ':' + pad2(pickStartM) + '，请选择结束日期'; return; }
+  timePopTip.textContent = fmtDateTime(rangeStart()) + ' ~ ' + fmtDateTime(rangeEnd());
+}
+function rangeStart() {
+  return new Date(pickStartDay.getFullYear(), pickStartDay.getMonth(), pickStartDay.getDate(), pickStartH, pickStartM);
+}
+function rangeEnd() {
+  return new Date(pickEndDay.getFullYear(), pickEndDay.getMonth(), pickEndDay.getDate(), pickEndH, pickEndM);
+}
+function applyTimeRange() {
+  if (!pickStartDay || !pickEndDay) { updateTip(); return; }
+  timeStart = rangeStart();
+  timeEnd = rangeEnd();
+  if (timeEnd <= timeStart) timeEnd = new Date(timeStart.getTime() + 60000);
+  timeRangeInput.value = fmtDateTime(timeStart) + ' - ' + fmtDateTime(timeEnd);
+  updateTip();
   renderFileTable();
+}
+function quickRange(kind) {
+  const now = new Date();
+  if (kind === 'today') {
+    pickStartDay = startOfDay(now); pickEndDay = startOfDay(now);
+  } else {
+    pickStartDay = new Date(now.getFullYear(), now.getMonth(), 1);
+    pickEndDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  }
+  pickStartH = 0; pickStartM = 0; pickEndH = 23; pickEndM = 59;
+  calAnchor = new Date(pickStartDay.getFullYear(), pickStartDay.getMonth(), 1);
+  renderCalendars();
+  syncTimeSelects();
+  applyTimeRange();
 }
 function clearTimeRange(e) {
   if (e) e.stopPropagation();
   timeStart = timeEnd = null;
-  pickStart = pickEnd = null;
+  pickStartDay = pickEndDay = null;
+  pickStartH = 0; pickStartM = 0; pickEndH = 23; pickEndM = 59;
   timeRangeInput.value = '';
-  closeTimePanel();
+  renderCalendars();
+  syncTimeSelects();
   renderFileTable();
 }
-function parseTimeInput() {
-  const v = (timeRangeInput.value || '').trim();
-  if (!v) { clearTimeRange(); return; }
-  const m = v.match(/(\d{1,2})[:：](\d{2})\s*(?:-|~|→|to)\s*(\d{1,2})[:：](\d{2})/);
-  if (!m) {
-    timeRangeInput.value = timeStart ? fmtMin(pickStart) + ' → ' + fmtMin(pickEnd) : '';
-    return;
-  }
-  let s = parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
-  let e = parseInt(m[3], 10) * 60 + parseInt(m[4], 10);
-  if (s > e) { const t = s; s = e; e = t; }
-  pickStart = s; pickEnd = e;
-  timePopDate = new Date();
-  applyRange();
-}
-document.addEventListener('click', (e) => {
-  if (!e.target.closest('#timeRange')) closeTimePanel();
+
+dtCal1.addEventListener('click', (ev) => {
+  const btn = ev.target.closest('.dt-cell');
+  if (btn) pickDay(Number(btn.dataset.ts));
 });
+dtCal2.addEventListener('click', (ev) => {
+  const btn = ev.target.closest('.dt-cell');
+  if (btn) pickDay(Number(btn.dataset.ts));
+});
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#timeRange') && !e.target.closest('#timePop')) closeTimePanel();
+});
+fillTimeSelects();
 
 function renderFileTable() {
   const keyword = (fileFilter.value || '').toLowerCase();
