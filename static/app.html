@@ -100,6 +100,7 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: "Microsof
 .log-line.level-error { color: #ff7b72; background: rgba(248,81,73,.10); border-left: 2px solid #f85149; }
 .log-line.level-warn { color: #e3b341; background: rgba(210,153,29,.10); border-left: 2px solid #d2991d; }
 .log-line.level-success { color: #56d364; background: rgba(63,185,80,.10); border-left: 2px solid #3fb950; }
+.log-line.level-debug { color: #f778ba; background: rgba(247,120,186,.10); border-left: 2px solid #f778ba; }
 .pane footer {
   height: 26px; display: flex; align-items: center; gap: 10px; padding: 0 10px;
   border-top: 1px solid #eef2f7; font-size: 11px; color: #7b8aa3; background: #fbfdff; flex-shrink: 0;
@@ -116,7 +117,6 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: "Microsof
   <nav class="tabs">
     <a href="/index.html">主机日志</a>
     <a href="/app.html" class="active">应用日志</a>
-    <a href="/tail.html">路径追踪</a>
   </nav>
   <div class="topbar-right">
     <span class="conn-dot online" id="statusDot"></span>
@@ -177,7 +177,7 @@ const LEVEL_CLASS = {
   warn: 'level-warn', warning: 'level-warn',
   success: 'level-success', ok: 'level-success', pass: 'level-success', passed: 'level-success',
   done: 'level-success', completed: 'level-success',
-  info: '', notice: '', debug: '', trace: '', verbose: ''
+  info: '', notice: '', debug: 'level-debug', trace: '', verbose: ''
 };
 
 function lineClass(line) {

@@ -144,33 +144,6 @@ func (p *SSHPool) runCmd(hostID, cmd string) (string, error) {
 	return stdout.String(), nil
 }
 
-// Stat 查询远端路径信息（用于「路径追踪」判断文件是否存在、多大）
-type StatResult struct {
-	Exists bool   `json:"exists"`
-	Size   int64  `json:"size"`
-	Mtime  int64  `json:"mtime"`
-	Kind   string `json:"kind"`
-}
-
-func (p *SSHPool) Stat(hostID, filePath string) (StatResult, error) {
-	escaped := "'" + strings.ReplaceAll(filePath, "'", "'\\''") + "'"
-	out, err := p.runCmd(hostID, fmt.Sprintf("stat -c '%%s|%%Y|%%F' %s 2>/dev/null", escaped))
-	if err != nil {
-		return StatResult{}, err
-	}
-	out = strings.TrimSpace(out)
-	if out == "" {
-		return StatResult{Exists: false}, nil
-	}
-	parts := strings.SplitN(out, "|", 3)
-	if len(parts) < 3 {
-		return StatResult{Exists: false}, nil
-	}
-	size, _ := strconv.ParseInt(parts[0], 10, 64)
-	mtime, _ := strconv.ParseInt(parts[1], 10, 64)
-	return StatResult{Exists: true, Size: size, Mtime: mtime, Kind: parts[2]}, nil
-}
-
 // ListDir 列出主机日志根目录下指定相对路径的内容
 func (p *SSHPool) ListDir(hostID, relPath string) ([]DirEntry, error) {
 	cfg, ok := p.hosts[hostID]

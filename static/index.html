@@ -69,9 +69,25 @@ html, body {
 .host-select { flex: 0 0 200px; }
 .host-select select { width: 100%; height: 34px; padding: 4px 10px; border: 1px solid #d8e2f0; border-radius: 9px; font-size: 13px; outline: none; background: #fff; }
 
-.filter-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 6px; }
+.filter-row { display: flex; gap: 6px; margin-bottom: 6px; position: relative; }
 .filter-row input { width: 100%; padding: 5px 8px; border: 1px solid #d8e2f0; border-radius: 9px; font-size: 13px; outline: none; }
 .filter-row input:focus { border-color: #2b8cff; }
+/* 单框时间区间：点两次选起止，支持手输 09:00-11:30 */
+.time-range { position: relative; flex: 1; display: flex; align-items: center; }
+.time-range input { padding-right: 26px; background: #fff; cursor: pointer; }
+.time-clear { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); border: none; background: transparent; color: #94a3b8; font-size: 15px; line-height: 1; cursor: pointer; }
+.time-clear:hover { color: #dc2626; }
+.time-pop { display: none; position: absolute; top: calc(100% + 6px); left: 0; width: 268px; background: #fff; border: 1px solid #d8e2f0; border-radius: 10px; box-shadow: 0 10px 26px rgba(15,23,42,.14); z-index: 20; padding: 8px; }
+.time-pop.show { display: block; }
+.time-pop-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.time-nav { border: 1px solid #d8e2f0; background: #fff; color: #334155; width: 24px; height: 24px; border-radius: 6px; cursor: pointer; line-height: 1; }
+.time-day { flex: 1; text-align: center; font-size: 12px; color: #334155; font-weight: 600; }
+.time-tip { font-size: 11px; color: #64748b; margin-bottom: 6px; }
+.time-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; max-height: 210px; overflow-y: auto; }
+.time-cell { border: 1px solid #eef2f7; background: #f8fafc; color: #334155; font-size: 12px; border-radius: 6px; padding: 4px 0; cursor: pointer; text-align: center; }
+.time-cell:hover { background: #e8f1ff; border-color: #2b8cff; }
+.time-cell.start, .time-cell.end { background: #2b8cff; border-color: #2b8cff; color: #fff; }
+.time-cell.inrange { background: #e8f1ff; border-color: #bfd9ff; color: #1d4ed8; }
 
 .toolbar-row { display: flex; gap: 6px; align-items: center; margin-bottom: 4px; }
 .toolbar-row input[type="text"] { flex: 1; padding: 5px 8px; border: 1px solid #d8e2f0; border-radius: 9px; font-size: 13px; outline: none; }
@@ -152,6 +168,8 @@ tr.directory:hover td { background: #eff6ff; }
 .log-line.level-error { color: #ff7b72; background: rgba(248,81,73,0.10); border-left: 2px solid #f85149; }
 .log-line.level-warn { color: #e3b341; background: rgba(210,153,29,0.10); border-left: 2px solid #d2991d; }
 .log-line.level-success { color: #56d364; background: rgba(63,185,80,0.10); border-left: 2px solid #3fb950; }
+/* DEBUG：粉色，和红/黄/绿/白区分，正文可读 */
+.log-line.level-debug { color: #f778ba; background: rgba(247,120,186,0.10); border-left: 2px solid #f778ba; }
 
 .empty-state {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -182,7 +200,6 @@ tr.directory:hover td { background: #eff6ff; }
   <nav class="tabs">
     <a href="/index.html" class="active">主机日志</a>
     <a href="/app.html">应用日志</a>
-    <a href="/tail.html">路径追踪</a>
   </nav>
   <div class="topbar-right">
     <span class="conn-dot online" id="statusDot"></span>
@@ -204,8 +221,20 @@ tr.directory:hover td { background: #eff6ff; }
         </div>
 
         <div class="filter-row">
-          <input id="startTimeInput" type="datetime-local" placeholder="开始时间" onchange="renderFileTable()" />
-          <input id="endTimeInput" type="datetime-local" placeholder="结束时间" onchange="renderFileTable()" />
+          <div class="time-range" id="timeRange">
+            <input id="timeRangeInput" type="text" placeholder="时间筛选：点两次选区间（09:00-11:30 也可手输）"
+                   onclick="openTimePanel()" onchange="parseTimeInput()" />
+            <button type="button" class="time-clear" id="timeClearBtn" title="清除时间筛选" onclick="clearTimeRange(event)">×</button>
+            <div class="time-pop" id="timePop" onclick="event.stopPropagation()">
+              <div class="time-pop-head">
+                <button type="button" class="time-nav" onclick="shiftTimeDay(-1)">‹</button>
+                <span class="time-day" id="timePopDay"></span>
+                <button type="button" class="time-nav" onclick="shiftTimeDay(1)">›</button>
+              </div>
+              <div class="time-tip" id="timePopTip">第一次点选起点，第二次点选终点</div>
+              <div class="time-grid" id="timeGrid"></div>
+            </div>
+          </div>
         </div>
 
         <div class="toolbar-row">
@@ -310,8 +339,11 @@ const lineCountEl = document.getElementById('lineCount');
 const breadcrumb = document.getElementById('breadcrumb');
 const downloadSelectedBtn = document.getElementById('downloadSelectedBtn');
 const selectAllChk = document.getElementById('selectAllChk');
-const startTimeInput = document.getElementById('startTimeInput');
-const endTimeInput = document.getElementById('endTimeInput');
+const timeRangeInput = document.getElementById('timeRangeInput');
+const timePop = document.getElementById('timePop');
+const timePopDay = document.getElementById('timePopDay');
+const timePopTip = document.getElementById('timePopTip');
+const timeGrid = document.getElementById('timeGrid');
 
 // ============ 虚拟滚动容器 ============
 // 数据全量留内存，DOM 只渲染可视窗口，长日志挂机也不会卡
@@ -543,10 +575,100 @@ function isCompressed(name) {
   return n.endsWith('.gz') || n.endsWith('.zip') || n.endsWith('.tar') || n.endsWith('.tgz') || n.endsWith('.bz2') || n.endsWith('.xz') || n.endsWith('.7z') || n.endsWith('.rar');
 }
 
+// ============ 时间区间筛选（单框：点两次选起止，也可手输 09:00-11:30） ============
+let timeStart = null, timeEnd = null;   // 应用中的区间（Date）
+let timePopDate = new Date();           // 面板当前日期（只到天）
+let pickStart = null, pickEnd = null;   // 面板中已选的两个时间点（当天分钟数）
+
+function pad2(n) { return (n < 10 ? '0' : '') + n; }
+function fmtMin(m) { return pad2(Math.floor(m / 60)) + ':' + pad2(m % 60); }
+function dayLabel(d) {
+  const w = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][d.getDay()];
+  return (d.getMonth() + 1) + '月' + d.getDate() + '日 ' + w;
+}
+function dateAt(mins, base) {
+  const d = new Date(base.getFullYear(), base.getMonth(), base.getDate());
+  d.setMinutes(mins);
+  return d;
+}
+function openTimePanel() {
+  if (pickStart == null) timePopDate = new Date();
+  renderTimeGrid();
+  timePop.classList.add('show');
+}
+function closeTimePanel() { timePop.classList.remove('show'); }
+function shiftTimeDay(delta) {
+  timePopDate = new Date(timePopDate.getFullYear(), timePopDate.getMonth(), timePopDate.getDate() + delta);
+  renderTimeGrid();
+  if (pickStart != null && pickEnd != null) applyRange();
+}
+function renderTimeGrid() {
+  timePopDay.textContent = dayLabel(timePopDate);
+  timePopTip.textContent = pickStart == null
+    ? '第一次点选起点，第二次点选终点'
+    : (pickEnd == null ? '已选起点 ' + fmtMin(pickStart) + '，再点一次选终点'
+                       : fmtMin(pickStart) + ' → ' + fmtMin(pickEnd));
+  let html = '';
+  for (let m = 0; m < 1440; m += 10) {
+    let cls = 'time-cell';
+    if (pickStart != null && m === pickStart) cls += ' start';
+    if (pickEnd != null && m === pickEnd) cls += ' end';
+    if (pickStart != null && pickEnd != null && m > pickStart && m < pickEnd) cls += ' inrange';
+    html += '<button type="button" class="' + cls + '" onclick="pickTime(' + m + ')">' + fmtMin(m) + '</button>';
+  }
+  timeGrid.innerHTML = html;
+  const active = timeGrid.querySelector('.start');
+  if (active) active.scrollIntoView({ block: 'center' });
+}
+function pickTime(mins) {
+  if (pickStart == null || pickEnd != null) {   // 首次点选，或上一轮已完成 → 重新开始
+    pickStart = mins; pickEnd = null;
+    renderTimeGrid();
+    return;
+  }
+  pickEnd = mins;
+  if (pickEnd < pickStart) { const t = pickStart; pickStart = pickEnd; pickEnd = t; }
+  applyRange();
+  closeTimePanel();
+}
+function applyRange() {
+  timeStart = dateAt(pickStart, timePopDate);
+  timeEnd = dateAt(pickEnd, timePopDate);
+  if (timeEnd.getTime() <= timeStart.getTime()) timeEnd = new Date(timeStart.getTime() + 60000);
+  timeRangeInput.value = fmtMin(pickStart) + ' → ' + fmtMin(pickEnd) + '（' + (timePopDate.getMonth() + 1) + '/' + timePopDate.getDate() + '）';
+  renderFileTable();
+}
+function clearTimeRange(e) {
+  if (e) e.stopPropagation();
+  timeStart = timeEnd = null;
+  pickStart = pickEnd = null;
+  timeRangeInput.value = '';
+  closeTimePanel();
+  renderFileTable();
+}
+function parseTimeInput() {
+  const v = (timeRangeInput.value || '').trim();
+  if (!v) { clearTimeRange(); return; }
+  const m = v.match(/(\d{1,2})[:：](\d{2})\s*(?:-|~|→|to)\s*(\d{1,2})[:：](\d{2})/);
+  if (!m) {
+    timeRangeInput.value = timeStart ? fmtMin(pickStart) + ' → ' + fmtMin(pickEnd) : '';
+    return;
+  }
+  let s = parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+  let e = parseInt(m[3], 10) * 60 + parseInt(m[4], 10);
+  if (s > e) { const t = s; s = e; e = t; }
+  pickStart = s; pickEnd = e;
+  timePopDate = new Date();
+  applyRange();
+}
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#timeRange')) closeTimePanel();
+});
+
 function renderFileTable() {
   const keyword = (fileFilter.value || '').toLowerCase();
-  const startDate = startTimeInput.value ? new Date(startTimeInput.value) : null;
-  const endDate = endTimeInput.value ? new Date(endTimeInput.value) : null;
+  const startDate = timeStart;
+  const endDate = timeEnd;
 
   let list = [...currentItems];
 
@@ -557,8 +679,7 @@ function renderFileTable() {
     list = list.filter(item => { const ts = item.mtime_ts; return ts ? ts >= Math.floor(startDate.getTime()/1000) : true; });
   }
   if (endDate) {
-    const endTs = new Date(endDate.getTime() + 86400000);
-    list = list.filter(item => { const ts = item.mtime_ts; return ts ? ts <= Math.floor(endTs.getTime()/1000) : true; });
+    list = list.filter(item => { const ts = item.mtime_ts; return ts ? ts <= Math.floor(endDate.getTime()/1000) : true; });
   }
 
   list.sort((a, b) => {
@@ -762,7 +883,7 @@ const LEVEL_CLASS = {
   warn: 'level-warn', warning: 'level-warn',
   success: 'level-success', ok: 'level-success', pass: 'level-success', passed: 'level-success',
   done: 'level-success', completed: 'level-success',
-  info: '', notice: '', debug: '', trace: '', verbose: ''
+  info: '', notice: '', debug: 'level-debug', trace: '', verbose: ''
 };
 
 function levelClass(line) {

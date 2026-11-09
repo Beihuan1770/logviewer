@@ -21,24 +21,24 @@
 - 后端为每台主机维持一个 SSH 连接（30 秒 keepalive），每次读日志再开独立会话
 - 首次打开用 `tail -n N` 一次性取回末尾内容，之后用 `tail -n 0 -F` 只推新增行，不会重复
 - 每行经 WebSocket 推给浏览器；前端按 150ms 批量渲染，并限制 DOM 节点数和内存行数
-- 四个页面用 `go:embed` 内嵌进二进制，所以部署只有一个可执行文件
+- 页面用 `go:embed` 内嵌进二进制，所以部署只有一个可执行文件
 
 ## 功能
 
-- **三种看法**
+- **两种看法**
   - *主机日志*：按主机浏览日志目录，点文件即可实时追踪
   - *应用日志*：按 `apps` 配置把同一应用在多台主机上的日志并排分栏
-  - *路径追踪*：输入任意绝对路径即开即看，最近访问会记住
 - 实时追踪：暂停 / 继续、全屏、下载整份文件
 - 向上翻历史：滚动到顶部自动加载更早 200 行，视线位置不跳
 - 虚拟滚动：数据全量留在内存，页面只渲染可视窗口（约 2500 行），长时间挂机 + 任意上下翻都不卡、不丢历史
 - 内容过滤：关键字过滤并高亮命中（应用页的过滤对所有分栏同时生效）
 - 等级过滤：错误 / 警告 / 信息 三个开关，可只看错误或只看警告
 - 后台自动暂停：标签页在后台超过 `idle_pause_minutes`（默认 30）分钟自动停止追踪、释放 SSH，切回前台自动恢复
-- 日志等级着色：错误红、警告黄、成功绿、其余白
 - 终端彩色转义（ANSI）：日志里带 `\x1b[31m` 之类的颜色码会渲染成彩色，而非显示转义乱码；支持 256 色与真彩，日志内容一律转义，不会被当成 HTML 执行
 - 分栏数量由配置行数决定：一行一栏，单机单日志就是一栏铺满；同一主机可以写多行
 - 目录浏览：文件名搜索、按修改时间筛选、多选批量下载
+- 时间区间筛选：一个输入框，点一次选起点、再点一次选终点即可筛出该时间段修改的文件；也支持手输 `09:00-11:30`
+- 日志等级着色：错误红、警告黄、成功绿、DEBUG 粉、其余白
 - 路径白名单：默认允许任意绝对路径，也可以关闭并限定目录
 - 配置自检：`-check` 打印解析结果，启动前先核对
 
@@ -112,7 +112,7 @@ GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o logviewer .
 | `port` | 监听端口 | `23344` |
 | `tail_lines` | 首次打开加载的行数，也是向上翻页的起点 | 代码内 `1000`，示例文件写 `200` |
 | `idle_pause_minutes` | 标签页在后台超过该分钟数后自动停止追踪（释放 SSH），切回前台自动恢复；`0` 表示关闭 | `30` |
-| `allow_any_path` | 「路径追踪」页是否允许打开任意绝对路径 | `false` |
+| `allow_any_path` | 是否允许任意绝对路径（接口层白名单开关，默认关闭时只允许配置里的目录） | `false` |
 | `path_roots` | `allow_any_path: false` 时额外放行的目录列表 | 空 |
 | `defaults.user` | 主机未显式填写时的 SSH 用户 | `root` |
 | `defaults.port` | 主机未显式填写时的 SSH 端口 | `22` |
@@ -188,9 +188,8 @@ path_roots:
 
 | 页面 | 地址 | 用途 |
 |:--|:--|:--|
-| 主机日志 | `/` | 选主机 → 逐级浏览目录 → 点文件实时追踪；支持文件名搜索、修改时间筛选、多选批量下载、全屏 |
+| 主机日志 | `/` | 选主机 → 逐级浏览目录 → 点文件实时追踪；支持文件名搜索、时间区间筛选、多选批量下载、全屏 |
 | 应用日志 | `/app.html` | 从 `apps` 里选应用，按配置分栏；每栏独立暂停 / 全屏 / 下载，顶部过滤对所有栏生效 |
-| 路径追踪 | `/tail.html` | 输入绝对路径即开即看，先显示类型 / 大小 / 修改时间；最近 8 条自动记住，URL 带 `?host=&path=` 可直接分享 |
 | 全屏 | `/fullscreen.html?host=&file=` | 单文件全屏深色视图 |
 
 公共操作：暂停 / 继续、自动滚动开关、向上翻历史；主机日志页与全屏页还支持 `Ctrl+S` 停止、`Ctrl+L` 清屏。
@@ -202,7 +201,8 @@ path_roots:
 | ERROR / FATAL / PANIC / CRITICAL / SEVERE / ALERT / EMERG | 红，左侧红条 | 等级字段优先；无字段时兜底关键字：失败 / 错误 / 异常 / 崩溃 / 未完成 |
 | WARN / WARNING | 黄，左侧黄条 | 兜底关键字：警告 / 告警 / 超时 |
 | SUCCESS / OK / PASSED / DONE / COMPLETED | 绿，左侧绿条 | 兜底关键字：成功 / 已启动 / 已完成 / 就绪 |
-| INFO / DEBUG / TRACE / NOTICE / 无等级 | 保持白色 | 默认 |
+| INFO / NOTICE / TRACE / 无等级 | 保持白色 | 默认 |
+| DEBUG | 粉，左侧粉条 | 显式 `DEBUG` 字段 |
 
 判定顺序：先看行首 120 字符内有没有显式等级字段（`level=error`、`[WARN]`、`ERROR 1234 ---`、`{"level":"info"}`），命中就按等级上色；整行都没有等级字段时，才按关键字兜底。这样 `level=info msg="request success"` 仍然是白色，不会被正文里的 success 误染成绿色。
 
@@ -231,12 +231,10 @@ path_roots:
 |:--|:--|
 | `/`、`/index.html` | 主机日志页 |
 | `/app.html` | 应用日志页 |
-| `/tail.html` | 路径追踪页 |
 | `/fullscreen.html` | 全屏页（需 `host`、`file` 参数） |
 | `/ws` | WebSocket，消息类型：`init` / `load_prev` / `stop` / `list_dir` |
 | `/api/hosts` | 主机列表 |
 | `/api/apps` | 应用列表及其解析后的日志源 |
-| `/api/stat` | 远端路径的存在性、大小、修改时间 |
 | `/api/download` | 下载整份文件（受路径白名单约束） |
 | `/api/version` | 当前版本号 |
 | `/api/settings` | 前端配置（目前是 `idle_pause_minutes`） |
@@ -263,14 +261,13 @@ path_roots:
 
 ```
 main.go            配置解析、HTTP 路由、主机与应用解析
-ssh_handler.go     SSH 连接池、目录列举、tail、stat、下载
+ssh_handler.go     SSH 连接池、目录列举、tail、下载
 websocket.go       WebSocket 会话：init / load_prev / stop / list_dir
 static/index.html  主机日志页
 static/app.html    应用日志页（按主机分栏）
-static/tail.html   路径追踪页
 static/fullscreen.html  全屏页
-static/ansi.js     ANSI 彩色转义解析（四个页面共用）
-static/vscroll.js  窗口化虚拟滚动（四个页面共用）
+static/ansi.js     ANSI 彩色转义解析（各页面共用）
+static/vscroll.js  窗口化虚拟滚动（各页面共用）
 logviewer-linux-amd64  预编译二进制（Linux x86_64，随版本更新）
 config.example.yaml
 start.sh, stop.sh, restart.sh
@@ -278,11 +275,11 @@ start.sh, stop.sh, restart.sh
 
 ## 版本
 
-当前版本 **v2.8**，版本号唯一来源是 `main.go` 里的 `var version = "v2.8"`，页面通过 `GET /api/version` 获取。仓库根的 `logviewer-linux-amd64` 与这个版本号一一对应，发版时同步替换。不修改源码也可以注入版本号：
+当前版本 **v2.9**，版本号唯一来源是 `main.go` 里的 `var version = "v2.9"`，页面通过 `GET /api/version` 获取。仓库根的 `logviewer-linux-amd64` 与这个版本号一一对应，发版时同步替换。不修改源码也可以注入版本号：
 
 ```bash
-go build -ldflags "-s -w -X main.version=v2.8.1" -o logviewer .
-./logviewer -version        # 输出 v2.8
+go build -ldflags "-s -w -X main.version=v2.9.1" -o logviewer .
+./logviewer -version        # 输出 v2.9
 ```
 
 版本沿革：
@@ -299,8 +296,9 @@ go build -ldflags "-s -w -X main.version=v2.8.1" -o logviewer .
 | v2.6 | 标签页在后台超时自动停止追踪（可配置，默认 30 分钟），切回前台自动恢复 |
 | v2.7 | 终端 ANSI 彩色转义渲染（16/256/真彩，其余控制序列丢弃）；窗口化虚拟滚动（DOM 只渲染约 2500 行，长日志挂机与任意翻页不卡） |
 | v2.8 | 仓库内直接附带预编译二进制 `logviewer-linux-amd64`，下载改名即用，不需要自己编译 |
+| v2.9 | 去掉「路径追踪」页（/tail.html、/api/stat、顶部 Tab）；时间筛选改为单框点两次选区间；新增 DEBUG 粉色着色 |
 
-精简版（只有主机日志，无 Tab、无应用分栏、无路径追踪）维护在同一仓库的 `v1-lite` 分支，版本号 v1.4，默认端口 13344，同样自带预编译二进制 `logviewer-linux-amd64`。
+精简版（只有主机日志，无 Tab、无应用分栏）维护在同一仓库的 `v1-lite` 分支，版本号 v1.5，默认端口 13344，同样自带预编译二进制 `logviewer-linux-amd64`。
 
 ## 许可证
 

@@ -20,9 +20,9 @@ import (
 //go:embed static
 var staticFiles embed.FS
 
-// 版本号：源码内定版；构建时可用 -ldflags "-X main.version=v2.8.1" 覆盖
-// 四个页面的页脚与 /api/version 都读这一个变量，改版本只动这一行
-var version = "v2.8"
+// 版本号：源码内定版；构建时可用 -ldflags "-X main.version=v2.9.1" 覆盖
+// 三个页面的页脚与 /api/version 都读这一个变量，改版本只动这一行
+var version = "v2.9"
 
 // ---------- 配置文件结构（YAML） ----------
 
@@ -517,30 +517,6 @@ func main() {
 			cfg.Apps = []*App{}
 		}
 		json.NewEncoder(w).Encode(cfg.Apps)
-	})
-
-	mux.HandleFunc("/api/stat", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		host := r.URL.Query().Get("host")
-		file := r.URL.Query().Get("path")
-		if host == "" || file == "" {
-			http.Error(w, "缺少 host 或 path 参数", http.StatusBadRequest)
-			return
-		}
-		if _, ok := cfg.Host(host); !ok {
-			http.Error(w, "未知主机", http.StatusBadRequest)
-			return
-		}
-		if !cfg.IsAllowed(host, file) {
-			http.Error(w, "路径不在允许范围内", http.StatusForbidden)
-			return
-		}
-		st, err := pool.Stat(host, file)
-		if err != nil {
-			json.NewEncoder(w).Encode(map[string]interface{}{"exists": false, "error": err.Error()})
-			return
-		}
-		json.NewEncoder(w).Encode(st)
 	})
 
 	mux.HandleFunc("/api/download", func(w http.ResponseWriter, r *http.Request) {
