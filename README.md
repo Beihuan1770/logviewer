@@ -8,7 +8,7 @@
 
 ## 和主线的区别
 
-| 项 | 主线 v2.x | 本精简版 v1.5 |
+| 项 | 主线 v2.x | 本精简版 v1.6 |
 |:--|:--|:--|
 | 页面 | 主机日志 / 应用日志（顶部两个 Tab） | **只有主机日志**（无 Tab） |
 | 配置项 | `hosts` + `apps` + `allow_any_path` + `path_roots` | `port` + `tail_lines` + `idle_pause_minutes` + `defaults` + `hosts` |
@@ -130,7 +130,7 @@ hosts:
 
 ## 版本
 
-当前版本 **v1.5**，来源是 `main.go` 的 `var version = "v1.5"`；**界面不显示版本号**，需要核对时调 `GET /api/version`。仓库根的 `logviewer-linux-amd64` 与版本号一一对应。
+当前版本 **v1.6**，来源是 `main.go` 的 `var version = "v1.6"`；**界面不显示版本号**，需要核对时调 `GET /api/version`。仓库根的 `logviewer-linux-amd64` 与版本号一一对应。
 
 版本沿革：
 
@@ -142,6 +142,7 @@ hosts:
 | v1.3 | 同步主线 v2.7：终端 ANSI 彩色渲染、窗口化虚拟滚动（DOM 只渲染约 2500 行） |
 | v1.4 | 仓库内直接附带预编译二进制 `logviewer-linux-amd64`，clone 后改名即用 |
 | v1.5 | 时间筛选改为单框点两次选区间；新增 DEBUG 粉色着色；界面隐藏版本号 |
+| v1.6 | 时间选择面板改为 Ant Design 风格双栏浮层（蓝圈端点 + 浅蓝区间） |
 
 ## 许可证
 
