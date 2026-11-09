@@ -48,18 +48,26 @@
 
 ### 1. 准备二进制
 
-任选一种来源：
+仓库根目录**自带编译好的 `logviewer-linux-amd64`**（Linux x86_64，静态编译，约 7.5 MB），下载下来改个名就能跑，不需要装 Go：
+
+```bash
+# 从仓库下载（git clone 或直接下 raw 文件都行）
+mv logviewer-linux-amd64 logviewer
+chmod +x logviewer
+./logviewer -version        # 应输出与仓库版本号一致的 v2.x
+```
+
+其它来源（可选）：
 
 - 直接从已有的部署目录拷贝 `logviewer`；
-- 从本仓库 Releases 下载（若该版本附带了二进制资产）；
 - 自己编译（只有改了代码才需要，见下方「从源码构建」）。
 
 把二进制和脚本放进同一个目录，并赋予执行权限：
 
 ```bash
-cd /data/apps && unzip logviewer_linux_amd64.zip
-mv logviewer_linux_amd64 logviewer
-cd logviewer
+mkdir -p /data/apps/logviewer && cd /data/apps/logviewer
+cp /path/to/logviewer .     # 上一步改好名的二进制
+cp /path/to/start.sh /path/to/stop.sh /path/to/restart.sh .
 chmod +x logviewer start.sh stop.sh restart.sh
 ```
 
@@ -263,17 +271,18 @@ static/tail.html   路径追踪页
 static/fullscreen.html  全屏页
 static/ansi.js     ANSI 彩色转义解析（四个页面共用）
 static/vscroll.js  窗口化虚拟滚动（四个页面共用）
+logviewer-linux-amd64  预编译二进制（Linux x86_64，随版本更新）
 config.example.yaml
 start.sh, stop.sh, restart.sh
 ```
 
 ## 版本
 
-当前版本 **v2.7**，版本号唯一来源是 `main.go` 里的 `var version = "v2.7"`，页面通过 `GET /api/version` 获取。不修改源码也可以注入版本号：
+当前版本 **v2.8**，版本号唯一来源是 `main.go` 里的 `var version = "v2.8"`，页面通过 `GET /api/version` 获取。仓库根的 `logviewer-linux-amd64` 与这个版本号一一对应，发版时同步替换。不修改源码也可以注入版本号：
 
 ```bash
-go build -ldflags "-s -w -X main.version=v2.7.1" -o logviewer .
-./logviewer -version        # 输出 v2.7
+go build -ldflags "-s -w -X main.version=v2.8.1" -o logviewer .
+./logviewer -version        # 输出 v2.8
 ```
 
 版本沿革：
@@ -289,8 +298,9 @@ go build -ldflags "-s -w -X main.version=v2.7.1" -o logviewer .
 | v2.5 | 按等级过滤（错误 / 警告 / 信息） |
 | v2.6 | 标签页在后台超时自动停止追踪（可配置，默认 30 分钟），切回前台自动恢复 |
 | v2.7 | 终端 ANSI 彩色转义渲染（16/256/真彩，其余控制序列丢弃）；窗口化虚拟滚动（DOM 只渲染约 2500 行，长日志挂机与任意翻页不卡） |
+| v2.8 | 仓库内直接附带预编译二进制 `logviewer-linux-amd64`，下载改名即用，不需要自己编译 |
 
-精简版（只有主机日志，无 Tab、无应用分栏、无路径追踪）维护在同一仓库的 `v1-lite` 分支，版本号 v1.2，默认端口 13344。
+精简版（只有主机日志，无 Tab、无应用分栏、无路径追踪）维护在同一仓库的 `v1-lite` 分支，版本号 v1.4，默认端口 13344，同样自带预编译二进制 `logviewer-linux-amd64`。
 
 ## 许可证
 
