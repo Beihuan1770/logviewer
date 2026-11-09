@@ -275,11 +275,11 @@ start.sh, stop.sh, restart.sh
 
 ## 版本
 
-当前版本 **v2.13**，版本号唯一来源是 `main.go` 里的 `var version = "v2.13"`，页面通过 `GET /api/version` 获取。仓库根的 `logviewer-linux-amd64` 与这个版本号一一对应，发版时同步替换。不修改源码也可以注入版本号：
+当前版本 **v2.14**，版本号唯一来源是 `main.go` 里的 `var version = "v2.14"`，页面通过 `GET /api/version` 获取。仓库根的 `logviewer-linux-amd64` 与这个版本号一一对应，发版时同步替换。不修改源码也可以注入版本号：
 
 ```bash
-go build -ldflags "-s -w -X main.version=v2.13.1" -o logviewer .
-./logviewer -version        # 输出 v2.13
+go build -ldflags "-s -w -X main.version=v2.14.1" -o logviewer .
+./logviewer -version        # 输出 v2.14
 ```
 
 版本沿革：
@@ -301,8 +301,9 @@ go build -ldflags "-s -w -X main.version=v2.13.1" -o logviewer .
 | v2.11 | 时间筛选改为「日期 + 时间」区间：双月日历 + 起止时分下拉，可跨天/跨月，附今天/本月快捷 |
 | v2.12 | 布局：时间框移到主机下拉框左侧并同行，宽度收缩到 200px 上限，面包屑独占一行 |
 | v2.13 | 主机下拉加长到 280px；刷新/上级按钮靠右并与输入框留白 |
+| v2.14 | 主机下拉改为按最长选项文字自适应宽度（上限 280px），不再固定 280px |
 
-精简版（只有主机日志，无 Tab、无应用分栏）维护在同一仓库的 `v1-lite` 分支，版本号 v1.9，默认端口 13344，同样自带预编译二进制 `logviewer-linux-amd64`。
+精简版（只有主机日志，无 Tab、无应用分栏）维护在同一仓库的 `v1-lite` 分支，版本号 v1.10，默认端口 13344，同样自带预编译二进制 `logviewer-linux-amd64`。
 
 ## 许可证
 
