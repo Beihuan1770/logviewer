@@ -66,13 +66,15 @@ html, body {
 .pathbar { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; flex: 1; min-width: 0; }
 .crumb { background: #e8f1ff; color: #1d4ed8; border-radius: 999px; padding: 4px 9px; font-size: 12px; cursor: pointer; white-space: nowrap; }
 .crumb:hover { background: #d0e0ff; }
-.host-select { flex: 0 0 170px; }
+.host-select { flex: 0 0 280px; }
 .host-select select { width: 100%; height: 34px; padding: 4px 8px; border: 1px solid #d8e2f0; border-radius: 9px; font-size: 12px; outline: none; background: #fff; }
+/* 刷新/上级靠右，与两个输入框拉开距离 */
+.row-actions { margin-left: auto; display: flex; gap: 6px; flex-shrink: 0; }
 
 /* 面包屑单独一行；时间框与主机下拉同一行 */
 .pathbar-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
 .pathbar-row .pathbar { flex: 1; min-width: 0; }
-.time-range { position: relative; display: flex; align-items: center; flex: 1 1 auto; min-width: 0; max-width: 200px; }
+.time-range { position: relative; display: flex; align-items: center; flex: 1 1 auto; min-width: 90px; max-width: 180px; }
 .time-range .time-icon { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); width: 13px; height: 13px; pointer-events: none; color: #8c8c8c; }
 .time-range input { width: 100%; height: 32px; padding: 3px 24px 3px 25px; cursor: pointer; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 12px; color: #1f2d3d; background: #fff; outline: none; transition: border-color .15s, box-shadow .15s; }
 .time-range input:hover { border-color: #4096ff; }
@@ -205,7 +207,7 @@ tr.directory:hover td { background: #eff6ff; }
   .log-box { min-height: 380px; }
   .path-host-row { flex-wrap: nowrap; gap: 4px; }
   .time-range { flex: 1 1 auto; max-width: 200px; }
-  .host-select { flex: 0 0 150px; }
+  .host-select { flex: 0 0 200px; }
 }
 </style>
 </head>
@@ -237,8 +239,10 @@ tr.directory:hover td { background: #eff6ff; }
             <button type="button" class="time-clear" id="timeClearBtn" title="清除时间筛选" onclick="clearTimeRange(event)">×</button>
           </div>
           <div class="host-select"><select id="hostSelect"></select></div>
-          <button class="btn btn-primary btn-sm" onclick="refreshDir()">刷新</button>
-          <button class="btn btn-light btn-sm" onclick="goParent()">上级</button>
+          <div class="row-actions">
+            <button class="btn btn-primary btn-sm" onclick="refreshDir()">刷新</button>
+            <button class="btn btn-light btn-sm" onclick="goParent()">上级</button>
+          </div>
         </div>
 
         <div class="toolbar-row">
