@@ -62,6 +62,7 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: "Microsof
 .level-btn.active { background: #eef4ff; border-color: #2b8cff; color: #1d4ed8; font-weight: 600; }
 .level-btn[data-level="error"].active { background: #fef2f2; border-color: #f87171; color: #b91c1c; }
 .level-btn[data-level="warn"].active { background: #fffbeb; border-color: #fbbf24; color: #b45309; }
+.level-btn[data-level="debug"].active { background: #fdf2f8; border-color: #f778ba; color: #c2255c; }
 
 .panes {
   height: calc(100vh - var(--topbar-h) - var(--toolbar-h));
@@ -134,6 +135,7 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: "Microsof
     <button class="level-btn active" data-level="error">错误</button>
     <button class="level-btn active" data-level="warn">警告</button>
     <button class="level-btn active" data-level="info">信息</button>
+    <button class="level-btn active" data-level="debug">DEBUG</button>
   </div>
   <input id="filterInput" type="text" placeholder="全部面板过滤（日志内容）..." />
   <button class="btn btn-light btn-sm" id="btnAuto"><span id="autoText">自动滚动: 开</span></button>
@@ -162,7 +164,7 @@ let apps = [];
 let panes = [];
 let autoScroll = true;
 let filterText = '';
-let levelFilter = { error: true, warn: true, info: true };
+let levelFilter = { error: true, warn: true, info: true, debug: true };
 
 function esc(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -199,11 +201,12 @@ function lineClass(line) {
   return '';
 }
 
-// 等级归类：错误 / 警告 / 其余都算信息
+// 等级归类：错误 / 警告 / DEBUG / 其余都算信息
 function levelKind(line) {
   const c = lineClass(line);
   if (c === 'level-error') return 'error';
   if (c === 'level-warn') return 'warn';
+  if (c === 'level-debug') return 'debug';
   return 'info';
 }
 
